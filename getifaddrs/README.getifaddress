@@ -1,0 +1,200 @@
+getifaddrs.py   version 1.0
+
+The getifaddrs python module leverages the C library function getifaddrs() to gather information
+about the network interfaces in a system, as well as about their associated addresses. The
+module gains access to the getifaddrs() implementation in the libc dynamic library using the
+ctypes python module.
+
+getifaddrs python module is supported in MacOS (darwin) and Linux. It is based on previous work made by the following people:
+# Based on https://gist.github.com/sdeibel/eb1a01d79c512334531fe3eeb16b1ee9, which was
+# Based on https://gist.github.com/provegard/1536682, which was
+# Based on getifaddrs.py from pydlnadms [http://code.google.com/p/pydlnadms/].
+
+getiffaddrs consists on a few functions that permit retrieving the relevant address information.
+Additional information can be extracted directly from the named fields of the network interface
+and address objects, as noted below.
+Finally, the module can be executed as a python script to obtain general information in a couple of output formats.
+
+The following classes, constants and functions are available in the module
+
+Classes
+=======
+
+class getifaddrs.NetworkInterface(name=interface_name, output_format=DUMP_FORMAT))
+
+    Create a new interface object for an existing interface whose name is 'interface_name'. The
+    object is used to gather information about the interface itself. The information stored in
+    the object is presented using one of the the two formats available for output_format: GIA_FMT_DUMP,
+    the default, and GIA_FMT_IFCONF, to render interface object contents in ifconfig-like style when
+    the interface is requested in string context (e.g. print(interface) or str(interface)).
+
+    Network interface objects store a list of addresses of distinct families (link, inet and inet6)
+    that are associated with the interface
+
+    Available fields in object instances are:
+
+        name    = name          # interface name (string)
+        flags   = 0             # interface flags (lower 16 bits)
+        eflags  = 0             # extended flags, if available (16 higher bits) 
+        metric  = 0             # interface metric, if not zero
+        mtu     = 0             # interface mtu
+        options = 0             # interface options as a bitmap
+        index   = 0             # interface index
+        phys    = 0             #
+        hwtype  = None          # layer 2 hardware type, e.g. Ethernet
+
+        in_packets  = 0         # all stats are integers
+        in_bytes    = 0
+        in_errors   = 0
+        in_dropped  = 0
+        in_mcasts   = 0
+        out_packets = 0
+        out_bytes   = 0
+        out_errors  = 0
+        collisions  = 0
+
+        txqlen      = 0        # linux, transmit queue length
+        baudrate    = 0        # darwin, interface baudrate in b/s
+
+        if is_darwin:
+            out_mcasts  = 0    # linux shows incoming multicasts only
+
+        if is_linux:
+            in_overrun_errors   = 0    # more detailed errors
+            in_frame_errors     = 0
+            in_fifo_errors      = 0
+            in_missed_errors    = 0
+            out_dropped         = 0
+            out_overrun_errors  = 0
+            out_carrier_errors  = 0
+            out_fifo_errors     = 0
+            out_aborted_errors  = 0
+
+        format = output_format         # one of DUMP_FORMAT or IFCONFIG_FORMAT
+
+        addresses = []                 # the list of all addresses configured for the interface
+
+class getifaddrs.InterfaceAddress(address, family)
+
+    This is a base class for creating address object. The address and family parameters used to
+    instantiate address objects come from fields with the same name in the generic sockaddr structure.
+    Inspecting the family field, one can derive the right sockaddr for addresses of such family, be
+    this 'sockaddr_in', 'sockaddr_in6' or 'sockaddr_dl'/'sockaddr_ll' for link layer addresses,
+    depending on whether the platform is darwin or linux based.
+
+        address   = address        # initialized to the address (non-printable)
+        family    = family         # initialized to address family (link, inet and inet6 supported)
+
+class getifaddrs.InterfaceLinkLayerAddress(address, family=LOCAL_AF_L2)
+
+    This class inheritates from the InterfaceAddress base class. It is used to hold link layer
+    addresses and provides a good deal of information to the envelopping network interface objects.
+    LOCAL_AF_L2 is a locally defined constant whose value is AF_LINK in MacOS and AF_PACKET in linux
+
+class getifaddrs.InterfaceIPv4Address(address, family=inet)
+
+    Derived from InterfaceAddress base class. Holds IPv4 addresses
+
+        netmask     = None         # network mask in non-printable (sockadd.sa_data) format
+        broadcast   = None         # same for broadcast address, if any
+        destination = None         # same for destination address in point-to-point links
+        prefixlen   = None         # CIDR mask
+
+class getifaddrs.InterfaceIPv6Address(address, family=inet6)
+
+    Derived from InterfaceAddress base class. Holds IPv6 addresses
+
+        netmask     = None         # as above
+        destination = None         # as above
+        prefixlen   = None         # IPv6 address prefix length
+        scope       = None         # IPv6 address scope (e.g, global, link-local, interface-local)
+        scope_id    = 0            # uniqely identifies a scope among all interfaces/links
+        zone_id     = None         # a suffix attachd to the IPv6 address that represents its scope
+
+Symbols
+=======
+
+Various simbols are available for selecting argument options
+
+    GIA_AF_ALL      # select all address families available (currently link, inet and inet6)     
+    GIA_AF_LINK     # select link layer family addresses
+    GIA_AF_IP       # IPv4 family of addresses
+    GIA_AF_IPV      # IPv6 family of addresses
+
+    GIA_SCP_ALL     # all the IPv6 addresses are selected regardless of scope
+    GIA_SCP_HOST    # interface-local (loopback) addresses only
+    GIA_SCP_LOCAL   # local unique IPv6 addresses (global scope)
+    GIA_SCP_SITE    # site-local addresses (deprecated)
+    GIA_SCP_LINK    # link-local addresses
+    GIA_SCP_GLOBAL  # global addresses
+
+    GIA_FMT_DUMP    # compact output
+    GIA_FMT_IFCONF  # ifconfig-style output format 
+
+Functions
+=========
+
+The following public functions are available:
+
+    get_interface_names()
+
+        Returns a list of the names of all the interfaces availables in the system
+
+    get_interfaces(ifname=None, reqfamily=GIA_AF_ALL, reqscope=GIA_SCP_ALL, output_format=DEFAULT_FORMAT)
+
+        Returns a 'dict_values' iterable with all the interfaces in raw format
+        Interface objects can be queried for the fields shown above or displayed in string context
+        with 'print()' or 'str()'
+
+    get_interface(ifname)
+
+        Returns a NetworkInterface object instance for the interface named 'ifname', None if such
+        interface does not exist. This is an alias for the old 'get_network_interfaces()', which is
+        retained for compatibility
+
+    get_addresses(ifname, family=GIA_AF_ALL)
+
+        Returns a list of InterfaceAddress objects for the corresponding family. If 'ifname' does not
+        match any interface, returns None.
+
+    get_address(ifname, family=GIA_AF_ALL)
+
+        Returns a single InterfaceAddress object of the corresponding family type. If all the families
+        are selected (e.g. GIA_AF_ALL, the default), the hardware address is returned. If family is
+        inet6 (GIA_AF_INET6), the address with highest scope is returned.
+
+    print_addresses(ifname, family=GIA_AF_ALL)
+
+        Returns a list, possibly empty, of addresses in printable format for the interface and families
+        selected
+
+    print_address(ifname, family=GIA_AF_LINK)
+
+        Returns a single address, in printable format, for the interface and families selecte. If
+        family is inet6 (GIA_AF_INET6), the address with highest scope is returned.d
+
+Interactive interface
+=====================
+
+The getifaddrs.py can be run directly as an script using the appropiate invocation. Run 
+'python3 getiffaddrs.py -h' to get a grasp of the capabilities available.
+
+$ python3 getifaddrs.py -h
+usage: getifaddrs.py [-h] [-v] [-i] [-f {all,link,inet,inet6}]
+                     [-s {all,host,local,link,site,global}]
+                     [interface]
+
+get interface addresses and related information
+
+positional arguments:
+  interface             interface name
+
+options:
+  -h, --help            show this help message and exit
+  -v, --version         show program's version number and exit
+  -i, --ifconfig        ifconfig style output format
+  -f {all,link,inet,inet6}, --family {all,link,inet,inet6}
+                        address family
+  -s {all,host,local,link,site,global}, --scope {all,host,local,link,site,global}
+                        IPv6 address scope
+
