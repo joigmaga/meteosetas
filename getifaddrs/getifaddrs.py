@@ -1,34 +1,36 @@
 #! /usr/bin/env python3
 
-# Based on https://gist.github.com/provegard/1536682, which was
-# Based on getifaddrs.py from pydlnadms [http://code.google.com/p/pydlnadms/].
-# Only tested on Linux and OS X!
+"""  getifaddrs - Read and print interface and address information
 
-# Ignacio Martinez igmartin@movistar.es
-# Jan 2023
+     Based on https://gist.github.com/provegard/1536682, which was
+     Based on getifaddrs.py from pydlnadms [http://code.google.com/p/pydlnadms/].
+     Only tested on Linux and OS X!
 
-#################################################################
+     Ignacio Martinez igmartin@movistar.es
+     Jan 2023
+"""
+
+########################################
 #
+# Imports and basic symbol definitions
+#
+########################################
 # This only works for MacOS and linux
 #
-ALLOWED_OSES = ('darwin', 'linux')
-#
 import sys
+ALLOWED_OSES = ('darwin', 'linux')
 if sys.platform not in ALLOWED_OSES:
     print("platform %s is not supported. Exiting" % sys.platform, file=sys.stderr)
     sys.exit(1)
 
-is_darwin = sys.platform == 'darwin'
-is_linux  = sys.platform == 'linux'
+IS_DARWIN = sys.platform == 'darwin'
+IS_LINUX  = sys.platform == 'linux'
 
 from os import strerror
-import fcntl
-from socket import (AF_UNIX, AF_INET, AF_INET6, SOCK_DGRAM,
-                    socket, inet_ntop, ntohl, if_indextoname,
-)
+from socket import AF_UNIX, AF_INET, AF_INET6, SOCK_DGRAM, inet_ntop, if_indextoname
 
 # common symbol for L2 address family
-if is_darwin:
+if IS_DARWIN:
     from socket import AF_LINK
     LOCAL_AF_L2 = AF_LINK
 else:
@@ -42,29 +44,25 @@ AF_MAX   = 42
 # all families match
 LOCAL_AF_ALL = AF_MAX
 
-def family_match(family, famreq):
-    return family == famreq or famreq == LOCAL_AF_ALL
-
-def islayer2(family):
-    return family == LOCAL_AF_L2
-
 from ctypes import (
     Structure, Union, POINTER,
-    pointer, get_errno, cast, sizeof, create_string_buffer,
+    pointer, get_errno, cast,
     c_char,
-    c_byte, c_short, c_int,
-    c_ubyte, c_ushort, c_uint,
+    c_byte, c_short, c_ushort, c_int, c_uint,
     c_void_p, c_char_p,
     c_uint8, c_uint16, c_uint32
 )
 import ctypes.util
 import ctypes
 
-#######################################################################################
+######################################################################
 #
+# Symbols and mappings
+#
+#####################
 # Some ioctl codes
 #
-if is_darwin:
+if IS_DARWIN:
     SIOCGIFMETRIC = 0xC0206917
     SIOCGIFMTU    = 0xC0206933
     SIOCGIFCAP    = 0xC020695B
@@ -86,14 +84,6 @@ IFT_BRIDGE = 0xd1
 #
 ARPHRD_ETHER    = 1
 ARPHRD_LOOPBACK = 772
-
-def isether(hwtype):
-    return ((is_darwin and hwtype in (IFT_ETHER, IFT_L2VLAN, IFT_BRIDGE)) or
-            (is_linux  and hwtype == ARPHRD_ETHER))
-
-def isloop(hwtype):
-    return ((is_darwin and hwtype == IFT_LOOP) or
-            (is_linux  and hwtype == ARPHRD_LOOPBACK))
 
 FLG_FLAGS   = 1
 FLG_EFLAGS  = 2
@@ -130,9 +120,9 @@ IFF_LOWER_UP    = 0x010000
 IFF_DORMANT     = 0x020000
 IFF_ECHO        = 0x040000
 
-if is_darwin:
+if IS_DARWIN:
     IFF_MULTICAST   = 0x8000
-if is_linux:
+if IS_LINUX:
     IFF_MULTICAST   = 0x1000
 
 iffmap = { IFF_UP:          "UP",
@@ -153,7 +143,7 @@ iffmap = { IFF_UP:          "UP",
            IFF_MULTICAST:   "MULTICAST",
          }
 
-if is_linux:
+if IS_LINUX:
     iffmap.update( {
            IFF_NOTRAILERS:  "NOTRAILERS",
            IFF_MASTER:      "MASTER",
@@ -224,17 +214,40 @@ familymap = { LOCAL_AF_ALL:   "all",
               AF_INET6:       "inet6",
             }
 
-def revmap(map, item):
-    """ reverse mapping """
+##################################
+# macro-style short functions
+#
+def family_match(fam, reqfam):
+    """ return True if family matches the expected family or the latter is 'all families' """
 
-    for key in map.keys():
-        if map[key] == item:
-            return key
+    return reqfam in (fam, LOCAL_AF_ALL)
 
-    return None
+def scope_match(scp, reqscp):
+    """ return True if scope matches the expected scope or the latter is 'all scopes' """
 
-def scope_match(scope, scopereq):
-    return (scope == scopereq) or (scopereq == SCP_ALL)
+    return reqscp in (scp, SCP_ALL)
+
+def islayer2(fam):
+    """ return True if address family is link layer """
+
+    return fam == LOCAL_AF_L2
+
+def isether(hwt):
+    """ return True if the link is Ethernet """
+
+    return ((IS_DARWIN and hwt in (IFT_ETHER, IFT_L2VLAN, IFT_BRIDGE)) or
+            (IS_LINUX  and hwt == ARPHRD_ETHER))
+
+def isloop(hwt):
+    """ return True is the link is loopback """
+
+    return ((IS_DARWIN and hwt == IFT_LOOP) or
+            (IS_LINUX  and hwt == ARPHRD_LOOPBACK))
+
+def revmap(dmap, val):
+    """ return the key for value 'val' in dictionary 'dmap'. None if no value found """
+
+    return list(dmap)[list(dmap.values()).index(val)] if val in dmap.values() else None
 
 #
 # Assume one-byte per char encoding for interface names
@@ -255,13 +268,14 @@ DUMP_FORMAT     = 2
 DEFAULT_FORMAT  = DUMP_FORMAT
 
 BYTE_SCALE = ("B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB")
+BAUD_SCALE = ("b/s", "Kb/s", "Mb/s", "Gb/s", "Tb/s", "Pb/s", "Eb/s")
 
 #####################################################
 #
 # generic sockaddr structure
 #
 class struct_sockaddr(Structure):
-    if is_darwin:
+    if IS_DARWIN:
         _fields_ = [
             ('sa_len',    c_uint8), 
             ('sa_family', c_uint8),
@@ -274,7 +288,7 @@ class struct_sockaddr(Structure):
 # sockaddr structures for IPv4 and IPv6 addresses
 #
 class struct_sockaddr_in(Structure):
-    if is_darwin:
+    if IS_DARWIN:
         _fields_ = [
             ('sin_len',    c_uint8), 
             ('sin_family', c_uint8),
@@ -288,7 +302,7 @@ class struct_sockaddr_in(Structure):
             ('sin_addr',   c_byte * 4)]
 
 class struct_sockaddr_in6(Structure):
-    if is_darwin:
+    if IS_DARWIN:
         _fields_ = [
             ('sin6_len',      c_uint8), 
             ('sin6_family',   c_uint8),
@@ -307,7 +321,7 @@ class struct_sockaddr_in6(Structure):
 # sockaddr structures for hardware addresses
 # MacOS uses "struct sdl" whereas "struct ll" describes linux hw addresses
 #
-if is_darwin:
+if IS_DARWIN:
     class struct_sockaddr_dl(Structure):
         _fields_ = [
             ('sdl_len',     c_uint8),
@@ -319,7 +333,7 @@ if is_darwin:
             ('sdl_slen',    c_uint8),
             ('sdl_data',    c_uint8 * 256),]
 
-if is_linux:
+if IS_LINUX:
     class struct_sockaddr_ll(Structure):
         _fields_ = [
             ('sll_family',   c_uint16),
@@ -369,13 +383,13 @@ class struct_ifreq(Structure):
         ('ifr_name',    c_char * IFNAMSIZ),
         ('ifr_ifru',    union_ifr_ifru),]
 
-if is_darwin:
+if IS_DARWIN:
     class struct_ifstat(Structure):
         _fields_ = [
             ('ifs_name',      c_char * IFNAMSIZ),
             ('ascii',         c_char * 801),]
 
-if is_darwin:
+if IS_DARWIN:
     class struct_if_data(Structure):
         _fields_ = [
             ('ifi_type',            c_uint8),
@@ -408,7 +422,7 @@ if is_darwin:
             ('ifi_reserved1',       c_uint32),
             ('ifi_reserved2',       c_uint32),]
 
-if is_linux:
+if IS_LINUX:
     class struct_rtnl_link_stats(Structure):
         _fields_ = [
             ('rx_packets',          c_uint32),
@@ -439,20 +453,10 @@ if is_linux:
 #
 # module defined classes for abstracting network interfaces and its addresses
 #
-class NetworkInterface(object):
-    """ A placeholder for interface related information including addresses """
+class InterfaceStatistics(object):
+    """ A placeholder for interface gathered statistics and print methods """
 
-    def __init__(self, name, output_format=IFCONFIG_FORMAT):
-
-        self.name    = name
-        self.flags   = 0
-        self.eflags  = 0
-        self.metric  = 0
-        self.mtu     = 0
-        self.options = 0
-        self.index   = 0
-        self.phys    = 0
-        self.hwtype  = None
+    def __init__(self):
 
         self.in_packets  = 0
         self.in_bytes    = 0
@@ -464,13 +468,12 @@ class NetworkInterface(object):
         self.out_errors  = 0
         self.collisions  = 0
 
-        self.txqlen      = 0        # linux
-        self.baudrate    = 0        # darwin
+        self.baudrate    = 0        # darwin only
 
-        if is_darwin:
+        if IS_DARWIN:
             self.out_mcasts  = 0
 
-        if is_linux:
+        if IS_LINUX:
             self.in_overrun_errors   = 0
             self.in_frame_errors     = 0
             self.in_fifo_errors      = 0
@@ -481,93 +484,10 @@ class NetworkInterface(object):
             self.out_fifo_errors     = 0
             self.out_aborted_errors  = 0
 
-        self.format = output_format
-
-        self.addresses = []
-
-    def getaddress(self, psa, encname=None, flags=0, data=None):
-        """ read and save an address depending on the family it belongs to """
-
-        family = psa.contents.sa_family
-
-        addr  = None
-        if family == AF_INET:
-            sin  = cast(psa, POINTER(struct_sockaddr_in)).contents
-            addr = IPv4Address(bytes(sin.sin_addr))
-
-        elif family == AF_INET6:
-            sin6 = cast(psa, POINTER(struct_sockaddr_in6)).contents
-            addr = IPv6Address(bytes(sin6.sin6_addr))
-            addr.scope_id = sin6.sin6_scope_id        # scope id, a numeric id for each interface
-            # need to wait for prefixlen to get the address scope
-
-        elif family == LOCAL_AF_L2:
-            self.flags  = flags & 0x0000FFFF
-            self.eflags = flags & 0xFFFF0000
-            # get interface metric, mtu, ...
-            self.getoptions(encname)
-            # interface statistics
-            self.getstats(data)
-            #
-            if is_darwin:
-                sdl  = cast(psa, POINTER(struct_sockaddr_dl)).contents
-                addr = LinkLayerAddress(bytes(sdl.sdl_data[sdl.sdl_nlen:sdl.sdl_nlen+sdl.sdl_alen]))
-                self.hwtype = sdl.sdl_type 
-                self.index  = sdl.sdl_index
-            if is_linux:
-                sll  = cast(psa, POINTER(struct_sockaddr_ll)).contents
-                addr = LinkLayerAddress(bytes(sll.sll_data[:sll.sll_halen]))
-                self.hwtype = sll.sll_hatype
-                self.index  = sll.sll_ifindex
-
-        # your favourite family here
-        #
-
-        return addr, family
-
-    def getoptions(self, name):
-        """ libc based ioctl calls to obtain some additional interface attributes
-            note that requests with highest bit set must be cast to avoid being interpreted as signed
-        """ 
-
-        s = libc.socket(AF_LOCAL, SOCK_DGRAM, 0)
-        if s < 0:
-            err = get_errno()
-            print("socket error (%d): %s" % (err, strerror(err)), file=sys.stderr)
-            return 1
-
-        ifr  = struct_ifreq()
-        ifrp = pointer(ifr)
-
-        ifr.ifr_name = name
-
-        if libc.ioctl(s, c_uint(SIOCGIFMETRIC), ifrp) == 0:
-            self.metric = ifr.ifr_ifru.ifru_metric
-
-        if libc.ioctl(s, c_uint(SIOCGIFMTU), ifrp) == 0:
-            self.mtu = ifr.ifr_ifru.ifru_mtu
-
-        if is_darwin:
-            if libc.ioctl(s, c_uint(SIOCGIFCAP), ifrp) == 0:
-                self.options = ifr.ifr_ifru.ifru_cap[1]
-
-            if libc.ioctl(s, c_uint(SIOCGIFPHYS), ifrp) == 0:
-                self.phys = ifr.ifr_ifru.ifru_phys
-
-        if is_linux:
-            if libc.ioctl(s, c_uint(SIOCGIFTXQLEN), ifrp) == 0:
-                self.txqlen = ifr.ifr_ifru.ifru_intval
-
-        libc.close(s)
-
-        return 0
-
     def getstats(self, data):
-
-        if not data:
-            return -1
-
-        if is_darwin:
+        """ load interface statistics """
+   
+        if IS_DARWIN:
             stats = cast(data, POINTER(struct_if_data)).contents
 
             # common
@@ -585,7 +505,7 @@ class NetworkInterface(object):
             self.out_mcasts  = stats.ifi_omcasts
             self.baudrate    = stats.ifi_baudrate
 
-        if is_linux:
+        if IS_LINUX:
             stats = cast(data, POINTER(struct_rtnl_link_stats)).contents
 
             # common
@@ -612,6 +532,164 @@ class NetworkInterface(object):
 
         return 0
 
+    @staticmethod
+    def bytescale(num):
+        """ adjust the units of a quantity of bytes according to a XiB scale """
+
+        for fact in range(0,len(BYTE_SCALE)):
+            if num < 2**(10*(fact+1)):
+                break
+
+        return float(num/(2**(10*fact))), BYTE_SCALE[fact]
+
+    @staticmethod
+    def baudscale(num):
+        """ adjust the units of a bitrate according to a Xb/s scale """
+
+        for fact in range(0,len(BAUD_SCALE)):
+            if num < 10**(3*(fact+1)):
+                break
+
+        return int(num/(10**(3*fact))), BAUD_SCALE[fact]
+
+    def print_stats(self):
+        """ print interface statistics """
+
+        fmt   = ""
+
+        brate, scale = self.bytescale(self.in_bytes)
+        if IS_DARWIN:
+            fmt += "\n\tRX packets %d bytes %d (%.1f %s)" % (
+                                   self.in_packets, self.in_bytes, brate, scale) 
+            fmt += "\n\tRX multicast %d errors %d dropped %d" % (
+                                   self.in_mcasts, self.in_errors, self.in_dropped)
+        else:        
+            fmt += "\n\tTX packets %d  bytes %d (%.1f %s)" % (
+                                   self.in_packets, self.in_bytes, brate, scale) 
+            fmt += "\n\tTX errors %d  dropped %d  overruns %d  frame %d" % (
+                                   self.in_errors, self.in_dropped,
+                                   self.in_overrun_errors, self.in_frame_errors)
+
+        brate, scale = self.bytescale(self.out_bytes)
+        if IS_DARWIN:
+            fmt += "\n\tTX packets %d bytes %d (%.1f %s)" % (
+                                   self.out_packets, self.out_bytes, brate, scale)
+            fmt += "\n\tTX multicast %d errors %d collisions %d" % (
+                                   self.out_mcasts, self.out_errors, self.collisions)
+        else:
+            fmt += "\n\tTX packets %d  bytes %d (%.1f %s)" % (
+                                   self.out_packets, self.out_bytes, brate, scale)
+            fmt += "\n\tTX errors %d  dropped %d  overruns %d  carrier %d  collisions %d" % (
+                                   self.out_errors, self.out_dropped, self.out_overrun_errors,
+                                   self.out_carrier_errors, self.collisions)
+   
+        return fmt
+
+class NetworkInterface(object):
+    """ A placeholder for interface related information including addresses """
+
+    def __init__(self, name, format=IFCONFIG_FORMAT):
+
+        self.name    = name
+        self.flags   = 0
+        self.eflags  = 0
+        self.metric  = 0
+        self.mtu     = 0
+        self.options = 0
+        self.index   = 0
+        self.phys    = 0
+        self.hwtype  = None
+
+        self.txqlen      = 0        # linux only
+        self.baudrate    = 0        # darwin only
+
+        self.stats  = None
+        self.format = format
+
+        self.addresses = []
+
+    def getaddress(self, psa, encname=None, flags=0, data=None):
+        """ read and save an address depending on the family it belongs to """
+
+        fam = psa.contents.sa_family
+
+        addr  = None
+        if fam == AF_INET:
+            sin  = cast(psa, POINTER(struct_sockaddr_in)).contents
+            addr = IPv4Address(bytes(sin.sin_addr))
+
+        elif fam == AF_INET6:
+            sin6 = cast(psa, POINTER(struct_sockaddr_in6)).contents
+            addr = IPv6Address(bytes(sin6.sin6_addr))
+            addr.scope_id = sin6.sin6_scope_id        # scope id, a numeric id for each interface
+            # need to wait for prefixlen to get the address scope
+
+        elif fam == LOCAL_AF_L2:
+            self.flags  = flags & 0x0000FFFF
+            self.eflags = flags & 0xFFFF0000
+            # get interface metric, mtu, ...
+            self.getoptions(encname)
+            # interface statistics
+            self.getstats(data)
+            #
+            if IS_DARWIN:
+                sdl  = cast(psa, POINTER(struct_sockaddr_dl)).contents
+                addr = LinkLayerAddress(bytes(sdl.sdl_data[sdl.sdl_nlen:sdl.sdl_nlen+sdl.sdl_alen]))
+                self.hwtype = sdl.sdl_type 
+                self.index  = sdl.sdl_index
+            if IS_LINUX:
+                sll  = cast(psa, POINTER(struct_sockaddr_ll)).contents
+                addr = LinkLayerAddress(bytes(sll.sll_data[:sll.sll_halen]))
+                self.hwtype = sll.sll_hatype
+                self.index  = sll.sll_ifindex
+
+        # your favourite family here
+        #
+
+        return addr, fam
+
+    def getoptions(self, name):
+        """ libc based ioctl calls to obtain some additional interface attributes
+            note that requests with highest bit set must be cast to avoid
+            being interpreted as signed """ 
+
+        s = libc.socket(AF_LOCAL, SOCK_DGRAM, 0)
+        if s < 0:
+            err = get_errno()
+            print("socket error (%d): %s" % (err, strerror(err)), file=sys.stderr)
+            return 1
+
+        ifr  = struct_ifreq()
+        ifrp = pointer(ifr)
+
+        ifr.ifr_name = name
+
+        if libc.ioctl(s, c_uint(SIOCGIFMETRIC), ifrp) == 0:
+            self.metric = ifr.ifr_ifru.ifru_metric
+
+        if libc.ioctl(s, c_uint(SIOCGIFMTU), ifrp) == 0:
+            self.mtu = ifr.ifr_ifru.ifru_mtu
+
+        if IS_DARWIN:
+            if libc.ioctl(s, c_uint(SIOCGIFCAP), ifrp) == 0:
+                self.options = ifr.ifr_ifru.ifru_cap[1]
+
+            if libc.ioctl(s, c_uint(SIOCGIFPHYS), ifrp) == 0:
+                self.phys = ifr.ifr_ifru.ifru_phys
+
+        if IS_LINUX:
+            if libc.ioctl(s, c_uint(SIOCGIFTXQLEN), ifrp) == 0:
+                self.txqlen = ifr.ifr_ifru.ifru_intval
+
+        libc.close(s)
+
+        return 0
+
+#
+# import fcntl
+# from socket import socket, nhtol
+# from ctypes import sizeof, create_string_buffer
+#
 #    def getoptions(self, name):
 #        """ A pythonic alternative to get interface options, mtu, etc 
 #            as we are reading integers, platform byte order must be respected """
@@ -634,14 +712,14 @@ class NetworkInterface(object):
 #        fcntl.ioctl(s, SIOCGIFMTU, buff)
 #        self.mtu = getintval(buff, IFNAMSIZ)
 #
-#        if is_darwin':
+#        if IS_DARWIN:
 #            fcntl.ioctl(s, SIOCGIFCAP, buff)
 #            self.options = getintval(buff, IFNAMSIZ+4)
 #
 #            fcntl.ioctl(s, SIOCGIFPHYS, buff)
 #            self.phys = getintval(buff, IFNAMSIZ)
 #
-#        if is_linux:
+#        if IS_LINUX:
 #            fcntl.ioctl(s, SIOCGIFTXQLEN, buff)
 #            self.txqlen = getintval(buff, IFNAMSIZ)
 #
@@ -649,37 +727,48 @@ class NetworkInterface(object):
 #
 #        return 0
 
+    def getstats(self, data):
+
+        if not data:
+            return -1
+
+        self.stats = InterfaceStatistics()
+
+        self.stats.getstats(data)
+
+        return 0
+
     def print_flags(self, flagtype):
         """ Print flags and options using the corresponding map """
 
-        map = {}
+        mpp = {}
         fmt = ""
 
         if flagtype == FLG_FLAGS:
-            map   = iffmap
+            mpp   = iffmap
             flags = self.flags
         elif flagtype == FLG_EFLAGS:
-            map   = iffmap
+            mpp   = iffmap
             flags = self.eflags
         elif flagtype == FLG_OPTIONS:
-            map   = optmap
+            mpp   = optmap
             flags = self.options
         
         first = True
-        for f in map.keys():
-            if f & flags:
-                fmt += "%s%s" % ("" if first else ",", map[f])
+        for key, val in mpp.items():
+            if key & flags:
+                fmt += "%s%s" % ("" if first else ",", val)
                 first = False
 
         return fmt
 
-    def print_family_addresses(self, family):
+    def print_family_addresses(self, fam):
         """ print addresses from the interface address lists for each family """
 
         addrlist = []
 
         for addr in self.addresses:
-            if addr.family == family:
+            if addr.family == fam:
                 addrlist.append(addr)
 
         if len(addrlist) == 0:
@@ -691,51 +780,16 @@ class NetworkInterface(object):
         return str(tuple([str(_) for _ in addrlist]))
 
     def print_stats(self):
+        """ print interface statistics """
 
-        def bytescale(num):
-
-            for fact in range(0,len(BYTE_SCALE)):
-                if num < 2**(10*(fact+1)):
-                    break
-
-            return float(num/(2**(10*fact))), BYTE_SCALE[fact]
-
-        fmt   = ""
-
-        brate, scale = bytescale(self.in_bytes)
-        if is_darwin:
-            fmt += "\n\tRX packets %d bytes %d (%.1f %s)" % (
-                                   self.in_packets, self.in_bytes, brate, scale) 
-            fmt += "\n\tRX multicast %d errors %d dropped %d" % (
-                                   self.in_mcasts, self.in_errors, self.in_dropped)
-        else:        
-            fmt += "\n\tTX packets %d  bytes %d (%.1f %s)" % (
-                                   self.in_packets, self.in_bytes, brate, scale) 
-            fmt += "\n\tTX errors %d  dropped %d  overruns %d  frame %d" % (
-                                   self.in_errors, self.in_dropped,
-                                   self.in_overrun_errors, self.in_frame_errors)
-
-        brate, scale = bytescale(self.out_bytes)
-        if is_darwin:
-            fmt += "\n\tTX packets %d bytes %d (%.1f %s)" % (
-                                   self.out_packets, self.out_bytes, brate, scale)
-            fmt += "\n\tTX multicast %d errors %d collisions %d" % (
-                                   self.out_mcasts, self.out_errors, self.collisions)
-        else:
-            fmt += "\n\tTX packets %d  bytes %d (%.1f %s)" % (
-                                   self.out_packets, self.out_bytes, brate, scale)
-            fmt += "\n\tTX errors %d  dropped %d  overruns %d  carrier %d  collisions %d" % (
-                                   self.out_errors, self.out_dropped, self.out_overrun_errors,
-                                   self.out_carrier_errors, self.collisions)
-   
-        return fmt
+        return self.stats.print_stats()
 
     def __str__(self):
         """ interface printout """
 
         # platform dependencies: flags display in hex in darwin, decimal in linux
         #
-        if is_darwin:
+        if IS_DARWIN:
             flagsnum  = "%x"
             com       = ""
         else:
@@ -774,7 +828,7 @@ class NetworkInterface(object):
                     elif praddr:
                         fmt += "\n\taddr %s" % praddr
                     if praddr:
-                       fmt += " %s" % praddr
+                        fmt += " %s" % praddr
                     if self.txqlen:
                         fmt += " %stxqlen %s" % (com, self.txqlen)
                 elif addr and addr.family == AF_INET:
@@ -789,7 +843,7 @@ class NetworkInterface(object):
                         fmt += " %sdestination %s" % str(com, addr.destination)
                     fmt += " %sprefixlen %s" % (com, addr.prefixlen)
                     fmt += " %sscopeid 0x%x<%s>" % (com, addr.scope_id, scopemap[addr.scope])
-            if self.in_bytes + self.out_bytes > 0:
+            if self.stats.in_bytes + self.stats.out_bytes > 0:
                 fmt += self.print_stats()
         else:
             fmt += ", index=%d" % self.index
@@ -812,9 +866,9 @@ class NetworkInterface(object):
 class InterfaceAddress(object):
     """ Base class for all addresses """
 
-    def __init__(self, address, family):
-        self.address   = address
-        self.family    = family
+    def __init__(self, addr, fam):
+        self.address   = addr
+        self.family    = fam
 
     def getprefix(self, netmask):
         """ get the prefix length of an address by looking at its netmask """
@@ -822,9 +876,9 @@ class InterfaceAddress(object):
         prefixlen = 0
         done = False
         for i in range(len(netmask.address)):
-            b = netmask.address[i]
+            byte = netmask.address[i]
             for j in range(7,-1,-1):
-                if b & (1 << j):
+                if byte & (1 << j):
                     prefixlen += 1
                 else:
                     done = True
@@ -834,39 +888,26 @@ class InterfaceAddress(object):
  
         return prefixlen
 
-    def print_family_address(self):
-        """ obtain a printable representation of an address according to its family """
-
-        if self.family == LOCAL_AF_L2:
-            printable = self.print_macaddress()
-
-        elif self.family in (AF_INET, AF_INET6):
-            printable = inet_ntop(self.family, self.address)
-
-        if self.family == AF_INET6 and self.scope == SCP_LINK:
-            if self.zone_id:
-                printable += "%%%s" % self.zone_id
-
-        return printable
-
-    def __str__(self):
-
-        return self.print_family_address()
-
 class IPv4Address(InterfaceAddress):
+    """ IP address family subclass """
 
-    def __init__(self, address, family=AF_INET):
-        super().__init__(address, family)
+    def __init__(self, addr, fam=AF_INET):
+        super().__init__(addr, fam)
 
         self.netmask     = None
         self.broadcast   = None
         self.destination = None
         self.prefixlen   = None     # CIDR mask
         
-class IPv6Address(InterfaceAddress):
+    def __str__(self):
 
-    def __init__(self, address, family=AF_INET6):
-        super().__init__(address, family)
+        return inet_ntop(self.family, self.address)
+
+class IPv6Address(InterfaceAddress):
+    """ IP version 6 address family subclass """
+
+    def __init__(self, addr, fam=AF_INET6):
+        super().__init__(addr, fam)
 
         self.netmask     = None
         self.destination = None
@@ -905,28 +946,34 @@ class IPv6Address(InterfaceAddress):
 
         check = self.address
         if check[0] == 0xFE and ((check[1] & 0x80) == 0x80): 
-            scope = SCP_LINK            # link-local address (scope is associated with a link)
+            scp = SCP_LINK            # link-local address (scope is associated with a link)
         elif check[0] == 0xFE and ((check[1] & 0xC0) == 0xC0): 
-            scope = SCP_SITE            # site-local address (deprecated)
+            scp = SCP_SITE            # site-local address (deprecated)
         elif check[0] == 0xFC:
-            scope = SCP_LOCAL           # unique local address (locally assigned)
+            scp = SCP_LOCAL           # unique local address (locally assigned)
         elif check[0] == 0xFD:
-            scope = SCP_LOCAL           # unique local address, router assigned (not yet implemented)
+            scp = SCP_LOCAL           # unique local address, router assigned (not implemented)
         elif self.prefixlen == 128 and check[15] == 1:
-            scope = SCP_HOST            # loopback address
+            scp = SCP_HOST            # loopback address
         else:
-            scope = SCP_GLOBAL          # global address
+            scp = SCP_GLOBAL          # global address
 
-        # Looks like BSD specific. Scope zone id encapsulated into the IPV6 address
-        #if scope == SCP_LINK and check[2] != 0:
-        #    self.scope_id = check[2]
-
-        return scope
+        return scp
          
-class LinkLayerAddress(InterfaceAddress):
+    def __str__(self):
 
-    def __init__(self, address, family=LOCAL_AF_L2):
-        super().__init__(address, family)
+        printable = inet_ntop(self.family, self.address)
+
+        if self.scope == SCP_LINK and self.zone_id:
+            printable += "%%%s" % self.zone_id
+
+        return printable
+
+class LinkLayerAddress(InterfaceAddress):
+    """ Link Layer address family class """
+
+    def __init__(self, addr, fam=LOCAL_AF_L2):
+        super().__init__(addr, fam)
 
     def print_macaddress(self):
         """ Format as a colon separated MAC address
@@ -941,10 +988,14 @@ class LinkLayerAddress(InterfaceAddress):
             if addr[i] != '\0':
                 iszero = False
             buff += "%02x" % addr[i]
-            if (i < addrlen-1):
+            if i < addrlen-1:
                 buff += ":"
 
         return "" if iszero else buff
+
+    def __str__(self):
+
+        return self.print_macaddress()
 
 #######################################################
 #
@@ -964,14 +1015,15 @@ def ifap_iter(ifap):
 def get_network_interfaces(ifname=None,
                            reqfamily=LOCAL_AF_ALL,
                            reqscope=SCP_ALL,
-                           output_format=DEFAULT_FORMAT):
+                           outfmt=DEFAULT_FORMAT):
     """ walk through all network interfaces
         obtain relevant information about selected interface names, address families and scope """
 
     ifap = POINTER(struct_ifaddrs)()
-    if (libc.getifaddrs(pointer(ifap)) != 0):
+    if libc.getifaddrs(pointer(ifap)) != 0:
         err = get_errno()
         raise OSError(err, strerror(err))
+
     try:
         interfaces = {}
         for ifa in ifap_iter(ifap):
@@ -983,65 +1035,65 @@ def get_network_interfaces(ifname=None,
                 continue
 
             if name not in interfaces:
-                interfaces[name] = NetworkInterface(name, output_format)
+                interfaces[name] = NetworkInterface(name, outfmt)
             interface = interfaces[name]
 
             if not ifa.ifa_addr:
                 continue
 
-            addr    = ifa.ifa_addr
+            raddr   = ifa.ifa_addr
             encname = ifa.ifa_name
             flags   = ifa.ifa_flags
             stats   = ifa.ifa_data
-            address, family = interface.getaddress(addr, encname, flags, stats)
+            addr, fam = interface.getaddress(raddr, encname, flags, stats)
 
             # hw address contains important interface information
             # need to get the info before checking address family
             #
 
-            if not family_match(family, reqfamily):
-                del address
+            if not family_match(fam, reqfamily):
+                del addr
                 continue
 
             # done with link layer. Now get netmask and broadcast/destination addresses
             # destination addresses are non-null but meaningless for loopback and tunnel interfaces
             # in linux, we must use the parent address family
             #
-            if family in (AF_INET, AF_INET6):
+            if fam in (AF_INET, AF_INET6):
                 maskaddr = ifa.ifa_netmask
                 if maskaddr:
-                    address.netmask, fam = interface.getaddress(maskaddr)
-                    if address.netmask:
-                        address.prefixlen = address.getprefix(address.netmask)
+                    addr.netmask, _ = interface.getaddress(maskaddr)
+                    if addr.netmask:
+                        addr.prefixlen = addr.getprefix(addr.netmask)
 
                 # broadcast or destination address
                 destaddr = ifa.ifa_dstaddr
                 if destaddr:
-                    dest, fam = interface.getaddress(destaddr)
+                    dest, _ = interface.getaddress(destaddr)
                     if dest:
-                        if family == AF_INET and (flags & IFF_BROADCAST):
-                            address.broadcast = dest
+                        if fam == AF_INET and (flags & IFF_BROADCAST):
+                            addr.broadcast = dest
                         if flags & IFF_POINTOPOINT:
-                            address.destination = dest
+                            addr.destination = dest
                             # prefixlen of destination address 
-                            if netmask and destaddr:
-                                address.destination.prefixlen = (
-                                                      address.destination.getprefix(address.netmask))
+                            if maskaddr and destaddr:
+                                addr.destination.prefixlen = (
+                                          addr.destination.getprefix(addr.netmask))
 
             # and the address scope (IPv6)
             #
-            if family == AF_INET6:
-                address.scope   = address.getscope()   # address scope (e.g. global or link-local)
-                address.zone_id = address.getzone()    # zone scope (link related) for link-local addresses
-                if address.destination:
-                     address.destination.scope   = address.destination.getscope()
-                     address.destination.zone_id = address.destination.getzone()
+            if fam == AF_INET6:
+                addr.scope   = addr.getscope()   # address scope (e.g. global or link-local)
+                addr.zone_id = addr.getzone()    # zone scope (link id) for link-local addr)
+                if addr.destination:
+                    addr.destination.scope   = addr.destination.getscope()
+                    addr.destination.zone_id = addr.destination.getzone()
                 # check the address scope against the current reqscope selection
-                if not scope_match(address.scope, reqscope):
-                    del address
+                if not scope_match(addr.scope, reqscope):
+                    del addr
                     continue
 
-            interface.addresses.append(address)
+            interface.addresses.append(addr)
 
         return interfaces.values()
     finally:
@@ -1080,11 +1132,11 @@ def get_interface(ifname):
 
     for iface in get_interfaces():
         if iface.name == ifname:
-           return iface
+            return iface
 
     return None
 
-def get_addresses(ifname, family=GIA_AF_ALL):
+def get_addresses(ifname, fam=GIA_AF_ALL):
     """ get a list, possibly empty, of all the addresses for the families selected
         return None if there is no interface with such name """
 
@@ -1094,26 +1146,27 @@ def get_addresses(ifname, family=GIA_AF_ALL):
 
     addrlist = []
     for addr in iface.addresses:
-        if family == GIA_AF_ALL:
+        if fam == GIA_AF_ALL:
             addrlist.append(addr)
-        elif family == addr.family:
+        elif fam == addr.family:
             addrlist.append(addr)
 
     return addrlist
 
-def get_address(ifname, family=GIA_AF_ALL):
+def get_address(ifname, fam=GIA_AF_ALL):
     """ return a single address for the interface name and family selected
-        if all families are selected, return the hardware address if any """
+        if all families are selected, return the hardware address if any
+        if family is inet6, the address with the highest scope is returned """
 
-    if family == GIA_AF_ALL:
+    if fam == GIA_AF_ALL:
         return get_address(ifname, GIA_AF_LINK)
 
-    addrlist = get_addresses(ifname, family)
+    addrlist = get_addresses(ifname, fam)
 
     if not addrlist:
         return None
 
-    if family == GIA_AF_IPV6 and len(addrlist) > 1:
+    if fam == GIA_AF_IPV6 and len(addrlist) > 1:
         curscope = GIA_SCP_MIN
         for addr in addrlist[:]:
             if addr.scope > curscope:
@@ -1122,28 +1175,31 @@ def get_address(ifname, family=GIA_AF_ALL):
 
     return addrlist[0]     
 
-def print_addresses(ifname, family=GIA_AF_ALL):
+def print_addresses(ifname, fam=GIA_AF_ALL):
+    """ print the list of addresses configured in the interface for the families selected """
 
-    addrlist = get_addresses(ifname, family)
+    addrlist = get_addresses(ifname, fam)
     if addrlist is None:
         return ""
 
     return [str(addr) for addr in addrlist]
 
-def print_address(ifname, family=GIA_AF_LINK):
+def print_address(ifname, fam=GIA_AF_LINK):
+    """ print a single address for the interface and family selected
+        if no family is selected, the link layer address is returned
+        if IPv6 family is selected, the address with the highest scope is returned """
 
-    return str(get_address(ifname, family))
+    return str(get_address(ifname, fam))
 
 __all__ = ["GIA_AF_ALL", "GIA_AF_LINK", "GIA_AF_IP", "GIA_AF_IPV6",
-           "GIA_SCP_MIN", "GIA_SCP_ALL", "GIA_SCP_HOST", "GIA_SCP_LOCAL", "GIA_SCP_LINK", "GIA_SCP_GLOBAL",
-           "get_interface_names", "get_interface", "get_interfaces", "get_address", "get_addresses",
-           "print_address", "print_addresses"]
+           "GIA_SCP_MIN", "GIA_SCP_ALL", "GIA_SCP_HOST", "GIA_SCP_LOCAL",
+           "GIA_SCP_LINK", "GIA_SCP_GLOBAL",
+           "get_interface_names", "get_interface", "get_interfaces",
+           "get_address", "get_addresses", "print_address", "print_addresses"]
 
 if __name__ == '__main__':
 
     import argparse
-
-    ######################################
     #
     # Command line option and argument parsing
     #
