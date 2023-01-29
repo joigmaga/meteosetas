@@ -59,7 +59,7 @@ import ctypes
 #
 # Symbols and mappings
 #
-#####################
+######################
 # Some ioctl codes
 #
 if IS_DARWIN:
@@ -272,7 +272,9 @@ BAUD_SCALE = ("b/s", "Kb/s", "Mb/s", "Gb/s", "Tb/s", "Pb/s", "Eb/s")
 
 #####################################################
 #
-# generic sockaddr structure
+# C data structures
+#
+#   generic sockaddr structure
 #
 class struct_sockaddr(Structure):
     if IS_DARWIN:
@@ -383,12 +385,8 @@ class struct_ifreq(Structure):
         ('ifr_name',    c_char * IFNAMSIZ),
         ('ifr_ifru',    union_ifr_ifru),]
 
-if IS_DARWIN:
-    class struct_ifstat(Structure):
-        _fields_ = [
-            ('ifs_name',      c_char * IFNAMSIZ),
-            ('ascii',         c_char * 801),]
-
+# structures holding statistics and other interface data
+#
 if IS_DARWIN:
     class struct_if_data(Structure):
         _fields_ = [
@@ -454,7 +452,7 @@ if IS_LINUX:
 # module defined classes for abstracting network interfaces and its addresses
 #
 class InterfaceStatistics(object):
-    """ A placeholder for interface gathered statistics and print methods """
+    """ A placeholder for statistics collected on a interface and print methods """
 
     def __init__(self):
 
@@ -544,7 +542,7 @@ class InterfaceStatistics(object):
 
     @staticmethod
     def baudscale(num):
-        """ adjust the units of a bitrate according to a Xb/s scale """
+        """ adjust the units of a bitrate value according to a Xb/s scale """
 
         for fact in range(0,len(BAUD_SCALE)):
             if num < 10**(3*(fact+1)):
@@ -621,7 +619,7 @@ class NetworkInterface(object):
         elif fam == AF_INET6:
             sin6 = cast(psa, POINTER(struct_sockaddr_in6)).contents
             addr = IPv6Address(bytes(sin6.sin6_addr))
-            addr.scope_id = sin6.sin6_scope_id        # scope id, a numeric id for each interface
+            addr.scope_id = sin6.sin6_scope_id
             # need to wait for prefixlen to get the address scope
 
         elif fam == LOCAL_AF_L2:
@@ -728,6 +726,7 @@ class NetworkInterface(object):
 #        return 0
 
     def getstats(self, data):
+        """ get interface traffic counts and errors """
 
         if not data:
             return -1
@@ -784,6 +783,64 @@ class NetworkInterface(object):
 
         return self.stats.print_stats()
 
+    def print_ifconfig(self, com):
+        """ print interface and address data in ifconfig-style format """
+
+        fmt = ""
+
+        if self.options:
+            fmt += "\n\toptions=%x<%s>" % (self.options, self.print_flags(FLG_OPTIONS))
+
+        for addr in self.addresses:            
+            if addr and addr.family == LOCAL_AF_L2:
+                praddr = str(addr)
+                if isether(self.hwtype):
+                    fmt += "\n\tether"
+                elif isloop(self.hwtype) and (praddr or self.txqlen):
+                    fmt += "\n\tloop"
+                elif praddr:
+                    fmt += "\n\taddr"
+                if praddr:
+                    fmt += " %s" % praddr
+                if self.txqlen:
+                    fmt += " %stxqlen %s" % (com, self.txqlen)
+            elif addr and addr.family == AF_INET:
+                fmt += "\n\tinet %s %snetmask %s" % (str(addr), com, str(addr.netmask))
+                if addr.broadcast:
+                    fmt += " %sbroadcast %s" % (com, str(addr.broadcast))
+                if addr.destination:
+                    fmt += " %sdestination %s" % (com, str(addr.destination))
+            elif addr and addr.family == AF_INET6:
+                fmt += "\n\tinet6 %s" % str(addr)
+                if addr.destination:
+                    fmt += " %sdestination %s" % str(com, addr.destination)
+                fmt += " %sprefixlen %s" % (com, addr.prefixlen)
+                fmt += " %sscopeid 0x%x<%s>" % (com, addr.scope_id, scopemap[addr.scope])
+        if self.stats.in_bytes + self.stats.out_bytes > 0:
+            fmt += self.print_stats()
+
+        return fmt
+
+    def print_dump(self):
+        """ print interface and address data in compact format """
+
+        fmt = ""
+
+        fmt += ", index=%d" % self.index
+        if self.txqlen:
+            fmt += ", txqlen=%d" % self.txqlen
+        addrout = self.print_family_addresses(AF_INET)
+        if addrout:
+            fmt += ", IPv4=%s" % addrout
+        addrout = self.print_family_addresses(AF_INET6)
+        if addrout:
+            fmt += ", IPv6=%s" % addrout
+        addrout = self.print_family_addresses(LOCAL_AF_L2)
+        if addrout:
+            fmt += ", MAC=%s" % addrout
+                
+        return fmt
+
     def __str__(self):
         """ interface printout """
 
@@ -791,74 +848,38 @@ class NetworkInterface(object):
         #
         if IS_DARWIN:
             flagsnum  = "%x"
-            com       = ""
+            esp       = ""
         else:
             flagsnum  = "%d"
-            com       = " "
+            esp       = " "
 
         sep = "="
         if self.format == IFCONFIG_FORMAT:
             sep = " "
             flagsfmt = (flagsnum + "<%s>") % (self.flags, self.print_flags(FLG_FLAGS))
             if self.eflags:
-                flagsfmt += (" %seflags=" + flagsnum + "<%s>") % (com, self.eflags,
+                flagsfmt += (" %seflags=" + flagsnum + "<%s>") % (esp, self.eflags,
                                                                   self.print_flags(FLG_EFLAGS))
         else:
             sep = "="
-            com = ","
+            esp = ","
             flagsfmt = flagsnum % self.flags
 
         fmt = "%s:" % self.name
         fmt += " flags=%s" % flagsfmt
         if self.metric:
-            fmt += "%s metric%s%d" % (com, sep, self.metric)
+            fmt += "%s metric%s%d" % (esp, sep, self.metric)
         if self.mtu:
-            fmt += "%s mtu%s%d" % (com, sep, self.mtu)
+            fmt += "%s mtu%s%d" % (esp, sep, self.mtu)
+        if self.stats.baudrate:
+            bps, scale = self.stats.baudscale(self.stats.baudrate)
+            fmt += " %sbaudrate %s %s" % (esp, bps, scale)
 
         if self.format == IFCONFIG_FORMAT:
-            if self.options:
-                fmt += "\n\toptions=%x<%s>" % (self.options, self.print_flags(FLG_OPTIONS))
-            for addr in self.addresses:            
-                if addr and addr.family == LOCAL_AF_L2:
-                    praddr = str(addr)
-                    if isether(self.hwtype):
-                        fmt += "\n\tether"
-                    elif isloop(self.hwtype) and (praddr or self.txqlen):
-                        fmt += "\n\tloop"
-                    elif praddr:
-                        fmt += "\n\taddr %s" % praddr
-                    if praddr:
-                        fmt += " %s" % praddr
-                    if self.txqlen:
-                        fmt += " %stxqlen %s" % (com, self.txqlen)
-                elif addr and addr.family == AF_INET:
-                    fmt += "\n\tinet %s %snetmask %s" % (str(addr), com, str(addr.netmask))
-                    if addr.broadcast:
-                        fmt += " %sbroadcast %s" % (com, str(addr.broadcast))
-                    if addr.destination:
-                        fmt += " %sdestination %s" % (com, str(addr.destination))
-                elif addr and addr.family == AF_INET6:
-                    fmt += "\n\tinet6 %s" % str(addr)
-                    if addr.destination:
-                        fmt += " %sdestination %s" % str(com, addr.destination)
-                    fmt += " %sprefixlen %s" % (com, addr.prefixlen)
-                    fmt += " %sscopeid 0x%x<%s>" % (com, addr.scope_id, scopemap[addr.scope])
-            if self.stats.in_bytes + self.stats.out_bytes > 0:
-                fmt += self.print_stats()
+            fmt += self.print_ifconfig(esp)
         else:
-            fmt += ", index=%d" % self.index
-            if self.txqlen:
-                fmt += ", txqlen=%d" % self.txqlen
-            addrout = self.print_family_addresses(AF_INET)
-            if addrout:
-                fmt += ", IPv4=%s" % addrout
-            addrout = self.print_family_addresses(AF_INET6)
-            if addrout:
-                fmt += ", IPv6=%s" % addrout
-            addrout = self.print_family_addresses(LOCAL_AF_L2)
-            if addrout:
-                fmt += ", MAC=%s" % addrout
-                
+            fmt += self.print_dump()
+
         fmt += "\n"
 
         return fmt
@@ -874,6 +895,10 @@ class InterfaceAddress(object):
         """ get the prefix length of an address by looking at its netmask """
 
         prefixlen = 0
+
+        if not netmask:
+            return prefixlen
+
         done = False
         for i in range(len(netmask.address)):
             byte = netmask.address[i]
@@ -899,6 +924,23 @@ class IPv4Address(InterfaceAddress):
         self.destination = None
         self.prefixlen   = None     # CIDR mask
         
+    def getmaskdest(self, maddr, daddr, flags):
+        """ get the netmask address as well as the broadcast/destination depending on media """
+
+        # network mask
+        if maddr:
+            self.netmask   = maddr
+            self.prefixlen = self.getprefix(self.netmask)
+
+        # broadcast or destination address
+        if daddr:
+            if flags & IFF_BROADCAST:
+                self.broadcast = daddr
+            elif flags & IFF_POINTOPOINT:
+                self.destination = daddr
+
+        return 0
+
     def __str__(self):
 
         return inet_ntop(self.family, self.address)
@@ -915,6 +957,20 @@ class IPv6Address(InterfaceAddress):
         self.scope       = None
         self.scope_id    = 0
         self.zone_id     = None
+
+    def getmaskdest(self, maddr, daddr, flags):
+        """ get the netmask address as well as the broadcast/destination depending on media """
+
+        # network mask
+        if maddr:
+            self.netmask   = maddr
+            self.prefixlen = self.getprefix(self.netmask)
+
+        # destination address
+        if daddr and (flags & IFF_POINTOPOINT):
+            self.destination = daddr
+
+        return 0
 
     def getzone(self):
         """ obtain the zone id for an IPv6 link-local address
@@ -1012,9 +1068,7 @@ def ifap_iter(ifap):
             break
         ifa = ifa.ifa_next.contents
 
-def get_network_interfaces(ifname=None,
-                           reqfamily=LOCAL_AF_ALL,
-                           reqscope=SCP_ALL,
+def get_network_interfaces(ifname=None, reqfamily=LOCAL_AF_ALL, reqscope=SCP_ALL,
                            outfmt=DEFAULT_FORMAT):
     """ walk through all network interfaces
         obtain relevant information about selected interface names, address families and scope """
@@ -1041,15 +1095,15 @@ def get_network_interfaces(ifname=None,
             if not ifa.ifa_addr:
                 continue
 
-            raddr   = ifa.ifa_addr
-            encname = ifa.ifa_name
-            flags   = ifa.ifa_flags
-            stats   = ifa.ifa_data
-            addr, fam = interface.getaddress(raddr, encname, flags, stats)
+            sockaddr = ifa.ifa_addr
+            encname  = ifa.ifa_name
+            flags    = ifa.ifa_flags
+            stats    = ifa.ifa_data
 
             # hw address contains important interface information
             # need to get the info before checking address family
             #
+            addr, fam = interface.getaddress(sockaddr, encname, flags, stats)
 
             if not family_match(fam, reqfamily):
                 del addr
@@ -1060,25 +1114,15 @@ def get_network_interfaces(ifname=None,
             # in linux, we must use the parent address family
             #
             if fam in (AF_INET, AF_INET6):
-                maskaddr = ifa.ifa_netmask
-                if maskaddr:
-                    addr.netmask, _ = interface.getaddress(maskaddr)
-                    if addr.netmask:
-                        addr.prefixlen = addr.getprefix(addr.netmask)
+                masksockaddr = ifa.ifa_netmask
+                destsockaddr = ifa.ifa_dstaddr
 
-                # broadcast or destination address
-                destaddr = ifa.ifa_dstaddr
-                if destaddr:
-                    dest, _ = interface.getaddress(destaddr)
-                    if dest:
-                        if fam == AF_INET and (flags & IFF_BROADCAST):
-                            addr.broadcast = dest
-                        if flags & IFF_POINTOPOINT:
-                            addr.destination = dest
-                            # prefixlen of destination address 
-                            if maskaddr and destaddr:
-                                addr.destination.prefixlen = (
-                                          addr.destination.getprefix(addr.netmask))
+                if masksockaddr:
+                    maskaddr, _ = interface.getaddress(masksockaddr)
+                if destsockaddr:
+                    destaddr, _ = interface.getaddress(destsockaddr)
+
+                addr.getmaskdest(maskaddr, destaddr, flags)
 
             # and the address scope (IPv6)
             #
