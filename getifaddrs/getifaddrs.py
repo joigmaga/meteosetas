@@ -1044,7 +1044,7 @@ class LinkLayerAddress(InterfaceAddress):
 
         buff = ""
         for i in range(addrlen):
-            if addr[i] != '\0':
+            if addr[i] != 0:
                 iszero = False
             buff += "%02x" % addr[i]
             if i < addrlen-1:
