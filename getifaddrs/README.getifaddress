@@ -20,28 +20,9 @@ The following classes, constants and functions are available in the module
 Classes
 =======
 
-class getifaddrs.NetworkInterface(name=interface_name, output_format=DUMP_FORMAT))
+class getifaddrs.InterfaceStatistics()
 
-    Create a new interface object for an existing interface whose name is 'interface_name'. The
-    object is used to gather information about the interface itself. The information stored in
-    the object is presented using one of the the two formats available for output_format: GIA_FMT_DUMP,
-    the default, and GIA_FMT_IFCONF, to render interface object contents in ifconfig-like style when
-    the interface is requested in string context (e.g. print(interface) or str(interface)).
-
-    Network interface objects store a list of addresses of distinct families (link, inet and inet6)
-    that are associated with the interface
-
-    Available fields in object instances are:
-
-        name    = name          # interface name (string)
-        flags   = 0             # interface flags (lower 16 bits)
-        eflags  = 0             # extended flags, if available (16 higher bits) 
-        metric  = 0             # interface metric, if not zero
-        mtu     = 0             # interface mtu
-        options = 0             # interface options as a bitmap
-        index   = 0             # interface index
-        phys    = 0             #
-        hwtype  = None          # layer 2 hardware type, e.g. Ethernet
+    Interface statistics for bothway data traffic and eerors
 
         in_packets  = 0         # all stats are integers
         in_bytes    = 0
@@ -70,7 +51,33 @@ class getifaddrs.NetworkInterface(name=interface_name, output_format=DUMP_FORMAT
             out_fifo_errors     = 0
             out_aborted_errors  = 0
 
+class getifaddrs.NetworkInterface(name=interface_name, output_format=DUMP_FORMAT))
+
+    Create a new interface object for an existing interface whose name is 'interface_name'. The
+    object is used to gather information about the interface itself. The information stored in
+    the object is presented using one of the the two formats available for output_format:
+    GIA_FMT_DUMP, the default, and GIA_FMT_IFCONF, to render interface object contents in
+    ifconfig-like style when the interface is requested in string context (e.g. print(interface)
+    or str(interface)).
+
+    Network interface objects store a list of addresses of distinct families (link, inet and inet6)
+    that are associated with the interface
+
+    Available fields in object instances are:
+
+        name    = name          # interface name (string)
+        flags   = 0             # interface flags (lower 16 bits)
+        eflags  = 0             # extended flags, if available (16 higher bits) 
+        metric  = 0             # interface metric, if not zero
+        mtu     = 0             # interface mtu
+        options = 0             # interface options as a bitmap
+        index   = 0             # interface index
+        phys    = 0             #
+        hwtype  = None          # layer 2 hardware type, e.g. Ethernet
+
         format = output_format         # one of DUMP_FORMAT or IFCONFIG_FORMAT
+
+        stats =  None
 
         addresses = []                 # the list of all addresses configured for the interface
 

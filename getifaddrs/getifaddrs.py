@@ -609,6 +609,9 @@ class NetworkInterface(object):
     def getaddress(self, psa, encname=None, flags=0, data=None):
         """ read and save an address depending on the family it belongs to """
 
+        if not psa:
+            return None, None
+
         fam = psa.contents.sa_family
 
         addr  = None
@@ -792,7 +795,7 @@ class NetworkInterface(object):
             fmt += "\n\toptions=%x<%s>" % (self.options, self.print_flags(FLG_OPTIONS))
 
         for addr in self.addresses:            
-            if addr and addr.family == LOCAL_AF_L2:
+            if addr.family == LOCAL_AF_L2:
                 praddr = str(addr)
                 if isether(self.hwtype):
                     fmt += "\n\tether"
@@ -804,13 +807,13 @@ class NetworkInterface(object):
                     fmt += " %s" % praddr
                 if self.txqlen:
                     fmt += " %stxqlen %s" % (com, self.txqlen)
-            elif addr and addr.family == AF_INET:
+            elif addr.family == AF_INET:
                 fmt += "\n\tinet %s %snetmask %s" % (str(addr), com, str(addr.netmask))
                 if addr.broadcast:
                     fmt += " %sbroadcast %s" % (com, str(addr.broadcast))
                 if addr.destination:
                     fmt += " %sdestination %s" % (com, str(addr.destination))
-            elif addr and addr.family == AF_INET6:
+            elif addr.family == AF_INET6:
                 fmt += "\n\tinet6 %s" % str(addr)
                 if addr.destination:
                     fmt += " %sdestination %s" % str(com, addr.destination)
@@ -1075,8 +1078,7 @@ def get_network_interfaces(ifname=None, reqfamily=LOCAL_AF_ALL, reqscope=SCP_ALL
 
     ifap = POINTER(struct_ifaddrs)()
     if libc.getifaddrs(pointer(ifap)) != 0:
-        err = get_errno()
-        raise OSError(err, strerror(err))
+        raise OSError(get_errno(), strerror(get_errno()))
 
     try:
         interfaces = {}
@@ -1095,10 +1097,12 @@ def get_network_interfaces(ifname=None, reqfamily=LOCAL_AF_ALL, reqscope=SCP_ALL
             if not ifa.ifa_addr:
                 continue
 
-            sockaddr = ifa.ifa_addr
-            encname  = ifa.ifa_name
-            flags    = ifa.ifa_flags
-            stats    = ifa.ifa_data
+            encname      = ifa.ifa_name
+            sockaddr     = ifa.ifa_addr
+            masksockaddr = ifa.ifa_netmask
+            destsockaddr = ifa.ifa_dstaddr
+            flags        = ifa.ifa_flags
+            stats        = ifa.ifa_data
 
             # hw address contains important interface information
             # need to get the info before checking address family
@@ -1114,13 +1118,8 @@ def get_network_interfaces(ifname=None, reqfamily=LOCAL_AF_ALL, reqscope=SCP_ALL
             # in linux, we must use the parent address family
             #
             if fam in (AF_INET, AF_INET6):
-                masksockaddr = ifa.ifa_netmask
-                destsockaddr = ifa.ifa_dstaddr
-
-                if masksockaddr:
-                    maskaddr, _ = interface.getaddress(masksockaddr)
-                if destsockaddr:
-                    destaddr, _ = interface.getaddress(destsockaddr)
+                maskaddr, _ = interface.getaddress(masksockaddr)
+                destaddr, _ = interface.getaddress(destsockaddr)
 
                 addr.getmaskdest(maskaddr, destaddr, flags)
 
@@ -1237,7 +1236,7 @@ def print_address(ifname, fam=GIA_AF_LINK):
 
 __all__ = ["GIA_AF_ALL", "GIA_AF_LINK", "GIA_AF_IP", "GIA_AF_IPV6",
            "GIA_SCP_MIN", "GIA_SCP_ALL", "GIA_SCP_HOST", "GIA_SCP_LOCAL",
-           "GIA_SCP_LINK", "GIA_SCP_GLOBAL",
+           "GIA_SCP_LINK", "GIA_SCP_GLOBAL", "GIA_FMT_DUMP", "GIA_FMT_IFCONF",
            "get_interface_names", "get_interface", "get_interfaces",
            "get_address", "get_addresses", "print_address", "print_addresses"]
 
