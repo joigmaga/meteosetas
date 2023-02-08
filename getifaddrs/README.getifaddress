@@ -15,6 +15,9 @@ Additional information can be extracted directly from the named fields of the ne
 and address objects, as noted below.
 Finally, the module can be executed as a python script to obtain general information in a couple of output formats.
 
+A compact version of getifaddress is available as a pure python module in 'getifaddrs_module.py'. This
+is meant to be imported by other python programs/modules
+
 The following classes, constants and functions are available in the module
 
 Classes
@@ -34,7 +37,6 @@ class getifaddrs.InterfaceStatistics()
         out_errors  = 0
         collisions  = 0
 
-        txqlen      = 0        # linux, transmit queue length
         baudrate    = 0        # darwin, interface baudrate in b/s
 
         if is_darwin:
@@ -74,6 +76,7 @@ class getifaddrs.NetworkInterface(name=interface_name, output_format=DUMP_FORMAT
         index   = 0             # interface index
         phys    = 0             #
         hwtype  = None          # layer 2 hardware type, e.g. Ethernet
+        txqlen  = 0             # linux only, transmit queue length
 
         format = output_format         # one of DUMP_FORMAT or IFCONFIG_FORMAT
 
@@ -125,8 +128,8 @@ Various simbols are available for selecting argument options
 
     GIA_AF_ALL      # select all address families available (currently link, inet and inet6)     
     GIA_AF_LINK     # select link layer family addresses
-    GIA_AF_IP       # IPv4 family of addresses
-    GIA_AF_IPV      # IPv6 family of addresses
+    GIA_AF_INET     # IPv4 family of addresses
+    GIA_AF_INET6    # IPv6 family of addresses
 
     GIA_SCP_ALL     # all the IPv6 addresses are selected regardless of scope
     GIA_SCP_HOST    # interface-local (loopback) addresses only
@@ -169,6 +172,12 @@ The following public functions are available:
         Returns a single InterfaceAddress object of the corresponding family type. If all the families
         are selected (e.g. GIA_AF_ALL, the default), the hardware address is returned. If family is
         inet6 (GIA_AF_INET6), the address with highest scope is returned.
+
+    find_address(addr, ifname=None, family=GIA_AF_ALL)
+
+        Returns an address object matching 'addr' after looking up the interface(s) and families
+        selected. For IPV4 returns the first (primary) address if multiple are available. For IPv6,
+        returns the address with the highest scope (e.g. global) available.
 
     print_addresses(ifname, family=GIA_AF_ALL)
 

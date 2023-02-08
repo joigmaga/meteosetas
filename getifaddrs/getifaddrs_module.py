@@ -85,110 +85,10 @@ IFT_BRIDGE = 0xd1
 ARPHRD_ETHER    = 1
 ARPHRD_LOOPBACK = 772
 
-FLG_FLAGS   = 1
-FLG_EFLAGS  = 2
-FLG_OPTIONS = 3
-
 # interface flags
 #
-IFF_UP          = 0x0001
 IFF_BROADCAST   = 0x0002
-IFF_DEBUG       = 0x0004
-IFF_LOOPBACK    = 0x0008
 IFF_POINTOPOINT = 0x0010
-IFF_NOTRAILERS  = 0x0020
-IFF_RUNNING     = 0x0040
-IFF_NOARP       = 0x0080
-IFF_PROMISC     = 0x0100
-IFF_ALLMULTI    = 0x0200
-
-IFF_OACTIVE     = 0x0400
-IFF_SIMPLEX     = 0x0800
-IFF_LINK0       = 0x1000
-IFF_LINK1       = 0x2000
-IFF_LINK2       = 0x4000
-
-IFF_MASTER      = 0x0400
-IFF_SLAVE       = 0x0800
-IFF_PORTSEL     = 0x2000
-IFF_AUTOMEDIA   = 0x4000
-IFF_DYNAMIC     = 0x8000
-
-# extended interface flags (high order bits)
-#
-IFF_LOWER_UP    = 0x010000
-IFF_DORMANT     = 0x020000
-IFF_ECHO        = 0x040000
-
-if IS_DARWIN:
-    IFF_MULTICAST   = 0x8000
-if IS_LINUX:
-    IFF_MULTICAST   = 0x1000
-
-iffmap = { IFF_UP:          "UP",
-           IFF_BROADCAST:   "BROADCAST",
-           IFF_DEBUG:       "DEBUG",
-           IFF_LOOPBACK:    "LOOPBACK",
-           IFF_POINTOPOINT: "POINTOPOINT",
-           IFF_NOTRAILERS:  "SMART",
-           IFF_RUNNING:     "RUNNING",
-           IFF_NOARP:       "NOARP",
-           IFF_PROMISC:     "PROMISC",
-           IFF_ALLMULTI:    "ALLMULTI",
-           IFF_OACTIVE:     "OACTIVE",
-           IFF_SIMPLEX:     "SIMPLEX",
-           IFF_LINK0:       "LINK0",
-           IFF_LINK1:       "LINK1",
-           IFF_LINK2:       "LINK2",
-           IFF_MULTICAST:   "MULTICAST",
-         }
-
-if IS_LINUX:
-    iffmap.update( {
-           IFF_NOTRAILERS:  "NOTRAILERS",
-           IFF_MASTER:      "MASTER",
-           IFF_SLAVE:       "SLAVE",
-           IFF_PORTSEL:     "PORTSEL",
-           IFF_AUTOMEDIA:   "AUTOMEDIA",
-           IFF_DYNAMIC:     "DYNAMIC",
-           IFF_LOWER_UP:    "LOWER_UP",
-           IFF_DORMANT:     "DORMANT",
-           IFF_ECHO:        "ECHO",
-         })
-
-# interface capabilities (displayed as 'options' in MacOS)
-#
-IFCAP_RXCSUM           = 0x00001
-IFCAP_TXCSUM           = 0x00002
-IFCAP_VLAN_MTU         = 0x00004
-IFCAP_VLAN_HWTAGGING   = 0x00008
-IFCAP_JUMBO_MTU        = 0x00010
-IFCAP_TSO4             = 0x00020
-IFCAP_TSO6             = 0x00040
-IFCAP_LRO              = 0x00080
-IFCAP_AV               = 0x00100
-IFCAP_TXSTATUS         = 0x00200
-IFCAP_SKYWALK          = 0x00400
-IFCAP_HW_TIMESTAMP     = 0x00800
-IFCAP_SW_TIMESTAMP     = 0x01000
-IFCAP_CSUM_PARTIAL     = 0x02000
-IFCAP_CSUM_ZERO_INVERT = 0x04000
-
-optmap = { IFCAP_RXCSUM:           "RXCSUM",
-           IFCAP_TXCSUM:           "TXCSUM", 
-           IFCAP_VLAN_MTU:         "VLAN_MTU",
-           IFCAP_VLAN_HWTAGGING:   "VLAN_HWTAGGING",
-           IFCAP_JUMBO_MTU:        "JUMBO_MTU",
-           IFCAP_TSO4:             "TSO4",
-           IFCAP_TSO6:             "TSO6",
-           IFCAP_LRO:              "LRO",
-           IFCAP_AV:               "AV",
-           IFCAP_TXSTATUS:         "TXSTATUS",
-           IFCAP_SKYWALK:          "CHANNEL_IO",
-           IFCAP_HW_TIMESTAMP:     "HW_TIMESTAMP",
-           IFCAP_SW_TIMESTAMP:     "SW_TIMESTAMP",
-           IFCAP_CSUM_PARTIAL:     "CSUM_PARTIAL",
-           IFCAP_CSUM_ZERO_INVERT: "CSUM_ZERO_INVERT", }
 
 # IPv6 scope
 #
@@ -260,16 +160,6 @@ GETIFADDRS_ENCODING = 'ISO-8859-1'
 #
 IFNAMSIZ     = 16
 SIZEOF_IFREQ = 32
-
-# Address listing format
-# Two options: ifconfig-like output or packed style address dump (default)
-#
-IFCONFIG_FORMAT = 1
-DUMP_FORMAT     = 2
-DEFAULT_FORMAT  = DUMP_FORMAT
-
-BYTE_SCALE = ("B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB")
-BAUD_SCALE = ("b/s", "Kb/s", "Mb/s", "Gb/s", "Tb/s", "Pb/s", "Eb/s")
 
 #####################################################
 #
@@ -386,208 +276,14 @@ class struct_ifreq(Structure):
         ('ifr_name',    c_char * IFNAMSIZ),
         ('ifr_ifru',    union_ifr_ifru),]
 
-# structures holding statistics and other interface data
-#
-if IS_DARWIN:
-    class struct_if_data(Structure):
-        _fields_ = [
-            ('ifi_type',            c_uint8),
-            ('ifi_typelen',         c_uint8),
-            ('ifi_physical',        c_uint8),
-            ('ifi_addrlen',         c_uint8),
-            ('ifi_hdrlen',          c_uint8),
-            ('ifi_recvquota',       c_uint8),
-            ('ifi_xmitquota',       c_uint8),
-            ('ifi_unused1',         c_uint8),
-            ('ifi_mtu',             c_uint32),
-            ('ifi_metric',          c_uint32),
-            ('ifi_baudrate',        c_uint32),
-            ('ifi_ipackets',        c_uint32),
-            ('ifi_ierrors',         c_uint32),
-            ('ifi_opackets',        c_uint32),
-            ('ifi_oerrors',         c_uint32),
-            ('ifi_collisions',      c_uint32),
-            ('ifi_ibytes',          c_uint32),
-            ('ifi_obytes',          c_uint32),
-            ('ifi_imcasts',         c_uint32),
-            ('ifi_omcasts',         c_uint32),
-            ('ifi_iqdrops',         c_uint32),
-            ('ifi_noproto',         c_uint32),
-            ('ifi_recvtiming',      c_uint32),
-            ('ifi_xmittiming',      c_uint32),
-            ('ifi_lastchange',      c_uint32 * 2),
-            ('ifi_unused2',         c_uint32),
-            ('ifi_hwassist',        c_uint32),
-            ('ifi_reserved1',       c_uint32),
-            ('ifi_reserved2',       c_uint32),]
-
-if IS_LINUX:
-    class struct_rtnl_link_stats(Structure):
-        _fields_ = [
-            ('rx_packets',          c_uint32),
-            ('tx_packets',          c_uint32),
-            ('rx_bytes',            c_uint32),
-            ('tx_bytes',            c_uint32),
-            ('rx_errors',           c_uint32),
-            ('tx_errors',           c_uint32),
-            ('rx_dropped',          c_uint32),
-            ('tx_dropped',          c_uint32),
-            ('multicast',           c_uint32),
-            ('collisions',          c_uint32),
-            ('rx_length_errors',    c_uint32),
-            ('rx_over_errors',      c_uint32),
-            ('rx_crc_errors',       c_uint32),
-            ('rx_frame_errors',     c_uint32),
-            ('rx_fifo_errors',      c_uint32),
-            ('rx_missed_errors',    c_uint32),
-            ('tx_aborted_errors',   c_uint32),
-            ('tx_carrier_errors',   c_uint32),
-            ('tx_fifo_errors',      c_uint32),
-            ('tx_heartbeat_errors', c_uint32),
-            ('tx_window_errors',    c_uint32),
-            ('rx_compressed',       c_uint32),
-            ('tx_compressed',       c_uint32),]
-
 #############################################################################
 #
 # module defined classes for abstracting network interfaces and its addresses
 #
-class InterfaceStatistics(object):
-    """ A placeholder for statistics collected on a interface and print methods """
-
-    def __init__(self):
-
-        self.in_packets  = 0
-        self.in_bytes    = 0
-        self.in_errors   = 0
-        self.in_dropped  = 0
-        self.in_mcasts   = 0
-        self.out_packets = 0
-        self.out_bytes   = 0
-        self.out_errors  = 0
-        self.collisions  = 0
-
-        self.baudrate    = 0        # darwin only
-
-        if IS_DARWIN:
-            self.out_mcasts  = 0
-
-        if IS_LINUX:
-            self.in_overrun_errors   = 0
-            self.in_frame_errors     = 0
-            self.in_fifo_errors      = 0
-            self.in_missed_errors    = 0
-            self.out_dropped         = 0
-            self.out_overrun_errors  = 0
-            self.out_carrier_errors  = 0
-            self.out_fifo_errors     = 0
-            self.out_aborted_errors  = 0
-
-    def getstats(self, data):
-        """ load interface statistics """
-   
-        if IS_DARWIN:
-            stats = cast(data, POINTER(struct_if_data)).contents
-
-            # common
-            self.in_packets  = stats.ifi_ipackets
-            self.in_bytes    = stats.ifi_ibytes
-            self.in_errors   = stats.ifi_ierrors
-            self.in_dropped  = stats.ifi_iqdrops
-            self.in_mcasts   = stats.ifi_imcasts
-            self.out_packets = stats.ifi_opackets
-            self.out_errors  = stats.ifi_oerrors
-            self.out_bytes   = stats.ifi_obytes
-            self.collisions  = stats.ifi_collisions
-
-            # darwin specific
-            self.out_mcasts  = stats.ifi_omcasts
-            self.baudrate    = stats.ifi_baudrate
-
-        if IS_LINUX:
-            stats = cast(data, POINTER(struct_rtnl_link_stats)).contents
-
-            # common
-            self.in_packets  = stats.rx_packets
-            self.in_bytes    = stats.rx_bytes
-            self.in_errors   = stats.rx_errors
-            self.in_dropped  = stats.rx_dropped
-            self.in_mcasts   = stats.multicast
-            self.out_packets = stats.tx_packets
-            self.out_bytes   = stats.tx_bytes
-            self.out_errors  = stats.tx_errors
-            self.collisions  = stats.collisions
-
-            # linux specific
-            self.in_overrun_errors   = stats.rx_over_errors
-            self.in_frame_errors     = stats.rx_frame_errors
-            self.in_fifo_errors      = stats.rx_fifo_errors
-            self.in_missed_errors    = stats.rx_missed_errors
-            self.out_dropped         = stats.tx_dropped
-            self.out_overrun_errors  = stats.tx_fifo_errors
-            self.out_carrier_errors  = stats.tx_carrier_errors 
-            self.out_fifo_errors     = stats.tx_fifo_errors
-            self.out_aborted_errors  = stats.tx_aborted_errors
-
-        return 0
-
-    @staticmethod
-    def bytescale(num):
-        """ adjust the units of a quantity of bytes according to a XiB scale """
-
-        for fact in range(0,len(BYTE_SCALE)):
-            if num < 2**(10*(fact+1)):
-                break
-
-        return float(num/(2**(10*fact))), BYTE_SCALE[fact]
-
-    @staticmethod
-    def baudscale(num):
-        """ adjust the units of a bitrate value according to a Xb/s scale """
-
-        for fact in range(0,len(BAUD_SCALE)):
-            if num < 10**(3*(fact+1)):
-                break
-
-        return int(num/(10**(3*fact))), BAUD_SCALE[fact]
-
-    def print_stats(self):
-        """ print interface statistics """
-
-        fmt   = ""
-
-        brate, scale = self.bytescale(self.in_bytes)
-        if IS_DARWIN:
-            fmt += "\n\tRX packets %d bytes %d (%.1f %s)" % (
-                                   self.in_packets, self.in_bytes, brate, scale) 
-            fmt += "\n\tRX multicast %d errors %d dropped %d" % (
-                                   self.in_mcasts, self.in_errors, self.in_dropped)
-        else:        
-            fmt += "\n\tTX packets %d  bytes %d (%.1f %s)" % (
-                                   self.in_packets, self.in_bytes, brate, scale) 
-            fmt += "\n\tTX errors %d  dropped %d  overruns %d  frame %d" % (
-                                   self.in_errors, self.in_dropped,
-                                   self.in_overrun_errors, self.in_frame_errors)
-
-        brate, scale = self.bytescale(self.out_bytes)
-        if IS_DARWIN:
-            fmt += "\n\tTX packets %d bytes %d (%.1f %s)" % (
-                                   self.out_packets, self.out_bytes, brate, scale)
-            fmt += "\n\tTX multicast %d errors %d collisions %d" % (
-                                   self.out_mcasts, self.out_errors, self.collisions)
-        else:
-            fmt += "\n\tTX packets %d  bytes %d (%.1f %s)" % (
-                                   self.out_packets, self.out_bytes, brate, scale)
-            fmt += "\n\tTX errors %d  dropped %d  overruns %d  carrier %d  collisions %d" % (
-                                   self.out_errors, self.out_dropped, self.out_overrun_errors,
-                                   self.out_carrier_errors, self.collisions)
-   
-        return fmt
-
 class NetworkInterface(object):
     """ A placeholder for interface related information including addresses """
 
-    def __init__(self, name, format=IFCONFIG_FORMAT):
+    def __init__(self, name):
 
         self.name    = name
         self.flags   = 0
@@ -601,12 +297,9 @@ class NetworkInterface(object):
 
         self.txqlen      = 0        # linux only
 
-        self.stats  = None
-        self.format = format
-
         self.addresses = []
 
-    def getaddress(self, psa, encname=None, flags=0, data=None):
+    def getaddress(self, psa, encname=None, flags=0):
         """ read and save an address depending on the family it belongs to """
 
         if not psa:
@@ -630,8 +323,6 @@ class NetworkInterface(object):
             self.eflags = flags & 0xFFFF0000
             # get interface metric, mtu, ...
             self.getoptions(encname)
-            # interface statistics
-            self.getstats(data)
             #
             if IS_DARWIN:
                 sdl  = cast(psa, POINTER(struct_sockaddr_dl)).contents
@@ -689,86 +380,8 @@ class NetworkInterface(object):
 
         return 0
 
-#
-# import fcntl
-# from socket import socket, nhtol
-# from ctypes import sizeof, create_string_buffer
-#
-#    def getoptions(self, name):
-#        """ A pythonic alternative to get interface options, mtu, etc 
-#            as we are reading integers, platform byte order must be respected """
-#
-#        def getintval(buffer, offset):
-#
-#            return ntohl(int(buffer[offset:offset+4].hex(), 16))
-#
-#        try:
-#            s = socket(AF_LOCAL, SOCK_DGRAM, 0)
-#        except OSError as ose:
-#            print("socket error: (%d) %s" % (ose.errno, ose.strerror), file=sys.stderr)
-#            return -1
-#
-#        buff = create_string_buffer(name, sizeof(struct_ifreq))
-#
-#        fcntl.ioctl(s, SIOCGIFMETRIC, buff)
-#        self.metric = getintval(buff, IFNAMSIZ)
-#
-#        fcntl.ioctl(s, SIOCGIFMTU, buff)
-#        self.mtu = getintval(buff, IFNAMSIZ)
-#
-#        if IS_DARWIN:
-#            fcntl.ioctl(s, SIOCGIFCAP, buff)
-#            self.options = getintval(buff, IFNAMSIZ+4)
-#
-#            fcntl.ioctl(s, SIOCGIFPHYS, buff)
-#            self.phys = getintval(buff, IFNAMSIZ)
-#
-#        if IS_LINUX:
-#            fcntl.ioctl(s, SIOCGIFTXQLEN, buff)
-#            self.txqlen = getintval(buff, IFNAMSIZ)
-#
-#        s.close()
-#
-#        return 0
-
-    def getstats(self, data):
-        """ get interface traffic counts and errors """
-
-        if not data:
-            return -1
-
-        self.stats = InterfaceStatistics()
-
-        self.stats.getstats(data)
-
-        return 0
-
-    def print_flags(self, flagtype):
-        """ Print flags and options using the corresponding map """
-
-        mpp = {}
-        fmt = ""
-
-        if flagtype == FLG_FLAGS:
-            mpp   = iffmap
-            flags = self.flags
-        elif flagtype == FLG_EFLAGS:
-            mpp   = iffmap
-            flags = self.eflags
-        elif flagtype == FLG_OPTIONS:
-            mpp   = optmap
-            flags = self.options
-        
-        first = True
-        for key, val in mpp.items():
-            if key & flags:
-                fmt += "%s%s" % ("" if first else ",", val)
-                first = False
-
-        return fmt
-
     def print_family_addresses(self, fam):
-        """ print addresses from the interface address lists for each family """
+        """ select and print addresses from the interface address based on address family """
 
         addrlist = []
 
@@ -784,57 +397,16 @@ class NetworkInterface(object):
  
         return str(tuple([str(_) for _ in addrlist]))
 
-    def print_stats(self):
-        """ print interface statistics """
+    def __str__(self):
+        """ interface printout """
 
-        return self.stats.print_stats()
+        fmt = "%s: flags=%x, eflags=%x, metric=%d, mtu=%d, options=%x, index=%d, hwtype=%d" % (
+              self.name, self.flags, self.eflags, self.metric, self.mtu, self.options,
+              self.index, self.hwtype)
 
-    def print_ifconfig(self, com):
-        """ print interface and address data in ifconfig-style format """
-
-        fmt = ""
-
-        if self.options:
-            fmt += "\n\toptions=%x<%s>" % (self.options, self.print_flags(FLG_OPTIONS))
-
-        for addr in self.addresses:            
-            if addr.family == LOCAL_AF_L2:
-                praddr = str(addr)
-                if isether(self.hwtype):
-                    fmt += "\n\tether"
-                elif isloop(self.hwtype) and (praddr or self.txqlen):
-                    fmt += "\n\tloop"
-                elif praddr:
-                    fmt += "\n\taddr"
-                if praddr:
-                    fmt += " %s" % praddr
-                if self.txqlen:
-                    fmt += " %stxqlen %s" % (com, self.txqlen)
-            elif addr.family == AF_INET:
-                fmt += "\n\tinet %s %snetmask %s" % (str(addr), com, str(addr.netmask))
-                if addr.broadcast:
-                    fmt += " %sbroadcast %s" % (com, str(addr.broadcast))
-                if addr.destination:
-                    fmt += " %sdestination %s" % (com, str(addr.destination))
-            elif addr.family == AF_INET6:
-                fmt += "\n\tinet6 %s" % str(addr)
-                if addr.destination:
-                    fmt += " %sdestination %s" % str(com, addr.destination)
-                fmt += " %sprefixlen %s" % (com, addr.prefixlen)
-                fmt += " %sscopeid 0x%x<%s>" % (com, addr.scope_id, scopemap[addr.scope])
-        if self.stats.in_bytes + self.stats.out_bytes > 0:
-            fmt += self.print_stats()
-
-        return fmt
-
-    def print_dump(self):
-        """ print interface and address data in compact format """
-
-        fmt = ""
-
-        fmt += ", index=%d" % self.index
-        if self.txqlen:
+        if IS_LINUX:
             fmt += ", txqlen=%d" % self.txqlen
+
         addrout = self.print_family_addresses(AF_INET)
         if addrout:
             fmt += ", IPv4=%s" % addrout
@@ -845,49 +417,6 @@ class NetworkInterface(object):
         if addrout:
             fmt += ", MAC=%s" % addrout
                 
-        return fmt
-
-    def __str__(self):
-        """ interface printout """
-
-        # platform dependencies: flags display in hex in darwin, decimal in linux
-        #
-        if IS_DARWIN:
-            flagsnum  = "%x"
-            esp       = ""
-        else:
-            flagsnum  = "%d"
-            esp       = " "
-
-        sep = "="
-        if self.format == IFCONFIG_FORMAT:
-            sep = " "
-            flagsfmt = (flagsnum + "<%s>") % (self.flags, self.print_flags(FLG_FLAGS))
-            if self.eflags:
-                flagsfmt += (" %seflags=" + flagsnum + "<%s>") % (esp, self.eflags,
-                                                                  self.print_flags(FLG_EFLAGS))
-        else:
-            sep = "="
-            esp = ","
-            flagsfmt = flagsnum % self.flags
-
-        fmt = "%s:" % self.name
-        fmt += " flags=%s" % flagsfmt
-        if self.metric:
-            fmt += "%s metric%s%d" % (esp, sep, self.metric)
-        if self.mtu:
-            fmt += "%s mtu%s%d" % (esp, sep, self.mtu)
-        if self.stats.baudrate:
-            bps, scale = self.stats.baudscale(self.stats.baudrate)
-            fmt += " %sbaudrate %s %s" % (esp, bps, scale)
-
-        if self.format == IFCONFIG_FORMAT:
-            fmt += self.print_ifconfig(esp)
-        else:
-            fmt += self.print_dump()
-
-        fmt += "\n"
-
         return fmt
 
 class InterfaceAddress(object):
@@ -1097,8 +626,7 @@ def ifap_iter(ifap):
             break
         ifa = ifa.ifa_next.contents
 
-def get_network_interfaces(ifname=None, reqfamily=LOCAL_AF_ALL, reqscope=SCP_ALL,
-                           outfmt=DEFAULT_FORMAT):
+def get_network_interfaces(ifname=None, reqfamily=LOCAL_AF_ALL, reqscope=SCP_ALL):
     """ walk through all network interfaces
         obtain relevant information about selected interface names, address families and scope """
 
@@ -1117,7 +645,7 @@ def get_network_interfaces(ifname=None, reqfamily=LOCAL_AF_ALL, reqscope=SCP_ALL
                 continue
 
             if name not in interfaces:
-                interfaces[name] = NetworkInterface(name, outfmt)
+                interfaces[name] = NetworkInterface(name)
             interface = interfaces[name]
 
             if not ifa.ifa_addr:
@@ -1128,12 +656,11 @@ def get_network_interfaces(ifname=None, reqfamily=LOCAL_AF_ALL, reqscope=SCP_ALL
             masksockaddr = ifa.ifa_netmask
             destsockaddr = ifa.ifa_dstaddr
             flags        = ifa.ifa_flags
-            stats        = ifa.ifa_data
 
             # hw address contains important interface information
             # need to get the info before checking address family
             #
-            addr, fam = interface.getaddress(sockaddr, encname, flags, stats)
+            addr, fam = interface.getaddress(sockaddr, encname, flags)
 
             if not family_match(fam, reqfamily):
                 del addr
@@ -1184,9 +711,6 @@ GIA_SCP_HOST   = SCP_INTLOCAL       # node-local (loopback)
 GIA_SCP_LINK   = SCP_LINKLOCAL      # link-local
 GIA_SCP_SITE   = SCP_SITELOCAL      # site-local
 GIA_SCP_GLOBAL = SCP_GLOBAL         # global
-
-GIA_FMT_DUMP   = DUMP_FORMAT
-GIA_FMT_IFCONF = IFCONFIG_FORMAT
 
 get_interfaces = get_network_interfaces
 
@@ -1294,31 +818,6 @@ def print_address(ifname, fam=GIA_AF_LINK, zone=True):
 
 __all__ = ["GIA_AF_ALL", "GIA_AF_LINK", "GIA_AF_INET", "GIA_AF_INET6",
            "GIA_SCP_MIN", "GIA_SCP_ALL", "GIA_SCP_HOST", "GIA_SCP_LINK", "GIA_SCP_GLOBAL",
-           "GIA_FMT_DUMP", "GIA_FMT_IFCONF",
            "get_interface_names", "get_interface", "get_interfaces",
            "find_address", "get_address", "get_addresses", "print_address", "print_addresses"]
 
-if __name__ == '__main__':
-
-    import argparse
-    #
-    # Command line option and argument parsing
-    #
-    argp = argparse.ArgumentParser(description='get interface addresses and related information')
-    argp.add_argument('-v', '--version',  action='version', version='getifaddrs version 1.0')
-    argp.add_argument('-i', '--ifconfig', action='store_const', const=IFCONFIG_FORMAT, 
-                help='ifconfig style output format')
-    argp.add_argument('-f', '--family',   choices=familymap.values(), default='all',
-                help='address family')
-    argp.add_argument('-s', '--scope',    choices=scopemap.values(),  default='all',
-                help='IPv6 address scope')
-    argp.add_argument('interface',        nargs='?', help='interface name')
-    opts = argp.parse_args()
-
-    output_format = DEFAULT_FORMAT
-    if opts.ifconfig:
-        output_format = IFCONFIG_FORMAT 
-    family = revmap(familymap, opts.family)
-    scope  = revmap(scopemap,  opts.scope)
-
-    for ni in get_interfaces(opts.interface, family, scope, output_format): print(str(ni), end='') 
