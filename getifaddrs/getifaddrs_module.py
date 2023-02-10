@@ -119,12 +119,12 @@ familymap = { LOCAL_AF_ALL:   "all",
 # macro-style short functions
 #
 def family_match(fam, reqfam):
-    """ return True if family matches the expected family or the latter is 'all families' """
+    """ return True if 'fam' matches the expected family or the latter is 'all families' """
 
     return reqfam in (fam, LOCAL_AF_ALL)
 
 def scope_match(scp, reqscp):
-    """ return True if scope matches the expected scope or the latter is 'all scopes' """
+    """ return True if 'scp' matches the expected scope or the latter is 'all scopes' """
 
     return reqscp in (scp, SCP_ALL)
 
@@ -479,7 +479,7 @@ class IPv4Address(InterfaceAddress):
         return 0
 
     def printaddress(self):
-        """ obtain a printable version of IPv6 address with or without the 'zone id' """
+        """ obtain a printable version of an IPv4 address """
 
         return inet_ntop(self.family, self.address)
         
@@ -559,7 +559,7 @@ class IPv6Address(InterfaceAddress):
         return scp
          
     def printaddress(self):
-        """ obtain a printable version of IPv6 address with or without the 'zone id' """
+        """ obtain a printable version of an IPv6 address with or without the 'zone id' """
 
         return self._printaddress(printzone=False)
 
@@ -603,7 +603,7 @@ class LinkLayerAddress(InterfaceAddress):
         return "" if iszero else buff
 
     def printaddress(self):
-        """ obtain a printable version of IPv6 address with or without the 'zone id' """
+        """ obtain a printable version of the link layer address """
 
         return self.print_macaddress()
         
@@ -719,10 +719,10 @@ def get_interface_names():
 
     return [iface.name for iface in get_interfaces()]
 
-def get_interface(ifname, fam=GIA_AF_ALL):
+def get_interface(ifname):
     """ get the interface object for the interface name selected """
 
-    for iface in get_interfaces(reqfamily=fam):
+    for iface in get_interfaces():
         if isinstance(ifname, int) and iface.index == ifname:
             return iface
         if isinstance(ifname, str) and iface.name == ifname:
@@ -730,9 +730,10 @@ def get_interface(ifname, fam=GIA_AF_ALL):
 
     return None
 
-def get_addresses(ifname, fam=GIA_AF_ALL):
-    """ get a list, possibly empty, of all the addresses for the families selected
-        return None if there is no interface with such name """
+def get_addresses(ifname, fam=GIA_AF_ALL, scope=GIA_SCP_ALL):
+    """ get a list, possibly empty, of all the addresses for the families and scopes selected
+        return None if there is no interface with such a name
+        return a (possibly empty) list of addresses otherwise """
 
     iface = get_interface(ifname)
     if not iface:
@@ -740,15 +741,44 @@ def get_addresses(ifname, fam=GIA_AF_ALL):
 
     addrlist = []
     for addr in iface.addresses:
-        if fam == GIA_AF_ALL:
-            addrlist.append(addr)
-        elif fam == addr.family:
-            addrlist.append(addr)
-
+        if not family_match(addr.family, fam):
+            continue
+        if addr.family == GIA_AF_INET6 and not scope_match(addr.scope, scope):
+            continue
+        addrlist.append(addr)
+               
     return addrlist
 
-def find_address(addr, ifname=None, fam=GIA_AF_ALL):
-    """ search for a given address. Lookup can be restricted to an interface and/or a family """
+def get_address(ifname, fam=GIA_AF_ALL, scope=GIA_SCP_ALL):
+    """ return a single address for the interface name and family selected
+        if all families are selected, return the hardware address if any
+        if family is inet6 an address, if any, with the required scope is returned
+        otherwise (all scopes selected), the address with the highest scope is returned """
+
+    if fam == GIA_AF_ALL:
+        return get_address(ifname, GIA_AF_LINK, scope)
+
+    addrlist = get_addresses(ifname, fam, scope)
+
+    if not addrlist:
+        return None
+
+    if fam == GIA_AF_INET6:
+        curscope = GIA_SCP_MIN
+        for addr in addrlist[:]:
+            if addr.scope == scope:
+                return addr
+            if addr.scope > curscope:
+                curscope = addr.scope
+                addrlist[0] = addr
+        if not scope_match(addrlist[0], scope):
+            return None
+
+    return addrlist[0]
+
+def find_address(addr, fam=GIA_AF_ALL, ifname=None):
+    """ search for a given address. Lookup can be restricted to an interface and/or a family
+        important: address scope is encoded in the address itself """
 
     for ifc in get_interfaces():
         if ifname is not None and ifname != ifc.name:
@@ -758,61 +788,37 @@ def find_address(addr, ifname=None, fam=GIA_AF_ALL):
                 continue
             ifa = ifaddr.printaddress()
             if ifaddr.family == GIA_AF_INET6:
-                # if addr contains zone (link-local), check for interface mismatch
+                # if addr contains zone id (e.g. link-local), check for interface mismatch
                 # otherwise remove the superfluous zone id from address as we know the interface
                 addr, _, zone = addr.partition('%')
-                if zone and zone != ifname:
+                if zone and not(zone == ifname or zone == str(ifc.index)):
                     continue
-            if ifa.lower() == addr.lower():
+            if ifa.lower() == addr.lower().strip():
                 return ifaddr
 
     return None
 
-def get_address(ifname, fam=GIA_AF_ALL):
-    """ return a single address for the interface name and family selected
-        if all families are selected, return the hardware address if any
-        if family is inet6, the address with the highest scope is returned """
-
-    if fam == GIA_AF_ALL:
-        return get_address(ifname, GIA_AF_LINK)
-
-    addrlist = get_addresses(ifname, fam)
-
-    if not addrlist:
-        return None
-
-    if fam == GIA_AF_INET6 and len(addrlist) > 1:
-        curscope = GIA_SCP_MIN
-        for addr in addrlist[:]:
-            if addr.scope > curscope:
-                curscope = addr.scope
-                addrlist[0] = addr
-
-    return addrlist[0]     
-
-def print_addresses(ifname, fam=GIA_AF_ALL):
+def print_addresses(ifname, fam=GIA_AF_ALL, scope=GIA_SCP_ALL):
     """ print the list of addresses configured in the interface for the families selected """
 
-    addrlist = get_addresses(ifname, fam)
+    addrlist = get_addresses(ifname, fam, scope)
     if addrlist is None:
         return ""
 
     return [str(addr) for addr in addrlist]
 
-def print_address(ifname, fam=GIA_AF_LINK, zone=True):
+def print_address(ifname, fam=GIA_AF_LINK, scope=GIA_SCP_ALL, zone=True):
     """ print a single address for the interface and family selected
         if no family is selected, the link layer address is returned
         if IPv6 family is selected, the address with the highest scope is returned """
 
-    addr = get_address(ifname, fam)
+    addr = get_address(ifname, fam, scope)
     if not addr:
         return ""
 
     paddr = str(addr)
     if (fam == GIA_AF_INET6 and not zone):
-        pindx = paddr.find('%')
-        if pindx != -1:
-            paddr = paddr[:pindx]
+        paddr = addr.printaddress()
 
     return paddr
 
@@ -820,4 +826,3 @@ __all__ = ["GIA_AF_ALL", "GIA_AF_LINK", "GIA_AF_INET", "GIA_AF_INET6",
            "GIA_SCP_MIN", "GIA_SCP_ALL", "GIA_SCP_HOST", "GIA_SCP_LINK", "GIA_SCP_GLOBAL",
            "get_interface_names", "get_interface", "get_interfaces",
            "find_address", "get_address", "get_addresses", "print_address", "print_addresses"]
-

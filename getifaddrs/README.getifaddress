@@ -18,14 +18,15 @@ Finally, the module can be executed as a python script to obtain general informa
 A compact version of getifaddress is available as a pure python module in 'getifaddrs_module.py'. This
 is meant to be imported by other python programs/modules
 
-The following classes, constants and functions are available in the module
+The following classes, constants and functions are available in the full and compact modules
+Items marked with (*) are only available in the full module
 
 Classes
 =======
 
-class getifaddrs.InterfaceStatistics()
+(*) class getifaddrs.InterfaceStatistics()
 
-    Interface statistics for bothway data traffic and eerors
+    Interface statistics for both data traffic and errors
 
         in_packets  = 0         # all stats are integers
         in_bytes    = 0
@@ -78,9 +79,9 @@ class getifaddrs.NetworkInterface(name=interface_name, output_format=DUMP_FORMAT
         hwtype  = None          # layer 2 hardware type, e.g. Ethernet
         txqlen  = 0             # linux only, transmit queue length
 
-        format = output_format         # one of DUMP_FORMAT or IFCONFIG_FORMAT
+(*)     format = output_format         # one of DUMP_FORMAT or IFCONFIG_FORMAT
 
-        stats =  None
+(*)     stats =  None
 
         addresses = []                 # the list of all addresses configured for the interface
 
@@ -138,8 +139,8 @@ Various simbols are available for selecting argument options
     GIA_SCP_LINK    # link-local addresses
     GIA_SCP_GLOBAL  # global addresses
 
-    GIA_FMT_DUMP    # compact output
-    GIA_FMT_IFCONF  # ifconfig-style output format 
+(*) GIA_FMT_DUMP    # compact output
+(*) GIA_FMT_IFCONF  # ifconfig-style output format 
 
 Functions
 =========
@@ -150,7 +151,8 @@ The following public functions are available:
 
         Returns a list of the names of all the interfaces availables in the system
 
-    get_interfaces(ifname=None, reqfamily=GIA_AF_ALL, reqscope=GIA_SCP_ALL, output_format=DEFAULT_FORMAT)
+(*) get_interfaces(ifname=None, reqfamily=GIA_AF_ALL, reqscope=GIA_SCP_ALL, output_format=DEFAULT_FORMAT)
+    get_interfaces(ifname=None, reqfamily=GIA_AF_ALL, reqscope=GIA_SCP_ALL)
 
         Returns a 'dict_values' iterable with all the interfaces in raw format
         Interface objects can be queried for the fields shown above or displayed in string context
@@ -162,35 +164,38 @@ The following public functions are available:
         interface does not exist. This is an alias for the old 'get_network_interfaces()', which is
         retained for compatibility
 
-    get_addresses(ifname, family=GIA_AF_ALL)
+    get_addresses(ifname, family=GIA_AF_ALL, scope=GIA_SCP_ALL)
 
-        Returns a list of InterfaceAddress objects for the corresponding family. If 'ifname' does not
-        match any interface, returns None.
+        Return a list of InterfaceAddress objects for the corresponding familes and scopes.
+        If 'ifname' does not match any interface, returns None.
 
-    get_address(ifname, family=GIA_AF_ALL)
+    get_address(ifname, family=GIA_AF_ALL, scope=GIA_SCP_ALL)
 
-        Returns a single InterfaceAddress object of the corresponding family type. If all the families
-        are selected (e.g. GIA_AF_ALL, the default), the hardware address is returned. If family is
-        inet6 (GIA_AF_INET6), the address with highest scope is returned.
+        Return a single InterfaceAddress object of the corresponding family type and scope.
+        If all the families are selected (e.g. GIA_AF_ALL, the default), the hardware address
+        is returned. If family is inet6 (GIA_AF_INET6) and all scopes are selected (GIA_SCP_ALL)
+        the address with the highest scope is returned.
 
-    find_address(addr, ifname=None, family=GIA_AF_ALL)
+    find_address(addr, family=GIA_AF_ALL, ifname=None)
 
-        Returns an address object matching 'addr' after looking up the interface(s) and families
-        selected. For IPV4 returns the first (primary) address if multiple are available. For IPv6,
-        returns the address with the highest scope (e.g. global) available.
+        Return an address object matching 'addr' after looking up the familes and interface(s) selected.
+        In MacOS, return the first (primary) address if multiple available. Linux has subinterfaces
 
-    print_addresses(ifname, family=GIA_AF_ALL)
+    print_addresses(ifname, family=GIA_AF_ALL, scope=GIA_SCP_ALL)
 
-        Returns a list, possibly empty, of addresses in printable format for the interface and families
-        selected
+        Return a list, possibly empty, of addresses in printable format for the interface, families
+        and scope selected
 
-    print_address(ifname, family=GIA_AF_LINK)
+    print_address(ifname, family=GIA_AF_LINK, scope=GIA_SCP_ALL, zone=True))
 
-        Returns a single address, in printable format, for the interface and families selecte. If
-        family is inet6 (GIA_AF_INET6), the address with highest scope is returned.d
+        Return a single address, in printable format, for the interface(s), family and scope(s) selected.
+        If family is inet6 (GIA_AF_INET6) and all scopes are selected (GIA_SCP_ALL), the address
+        with highest scope is returned
+        If 'zone' is True, the zone id (RFC 4007) is attached to end of the address if adequate (e.g.
+        link local scoped addresses). Otherwise, it is always removed
 
-Interactive interface
-=====================
+(*) Interactive interface
+=========================
 
 The getifaddrs.py can be run directly as an script using the appropiate invocation. Run 
 'python3 getiffaddrs.py -h' to get a grasp of the capabilities available.
