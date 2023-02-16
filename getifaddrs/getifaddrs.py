@@ -122,7 +122,7 @@ IFF_ECHO        = 0x040000
 
 if IS_DARWIN:
     IFF_MULTICAST   = 0x8000
-if IS_LINUX:
+elif IS_LINUX:
     IFF_MULTICAST   = 0x1000
 
 iffmap = { IFF_UP:          "UP",
@@ -1015,7 +1015,7 @@ class IPv6Address(InterfaceAddress):
             There are actually two scopes only (link-local and global) """
 
         check = self.address
-        if check[0] == 0xFE and ((check[1] & 0x80) == 0x80): 
+        if check[0] == 0xFE and ((check[1] & 0xC0) == 0x80): 
             scp = SCP_LINKLOCAL       # link-local address (scope is associated with a link)
         elif check[0] == 0xFE and ((check[1] & 0xC0) == 0xC0): 
             scp = SCP_SITELOCAL       # site-local address (deprecated)
@@ -1031,7 +1031,7 @@ class IPv6Address(InterfaceAddress):
         return scp
          
     def printaddress(self):
-        """ obtain a printable version of an IPv6 address with or without the 'zone id' """
+        """ obtain a printable version of a unicast IPv6 address with or without the 'zone id' """
 
         return self._printaddress(printzone=False)
 
