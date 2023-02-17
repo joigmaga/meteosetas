@@ -24,7 +24,7 @@ if sys.platform not in ALLOWED_OSES:
     sys.exit(1)
 
 IS_DARWIN = sys.platform == 'darwin'
-IS_LINUX  = sys.platform == 'linux'
+IS_LINUX  = sys.platform.startswith('linux')
 
 from os import strerror
 from socket import AF_UNIX, AF_INET, AF_INET6, SOCK_DGRAM, inet_ntop, if_indextoname
@@ -45,6 +45,7 @@ AF_MAX   = 42
 LOCAL_AF_ALL = AF_MAX
 
 from ctypes import (
+    CDLL,
     Structure, Union, POINTER,
     pointer, get_errno, cast,
     c_char,
@@ -52,8 +53,7 @@ from ctypes import (
     c_void_p, c_char_p,
     c_uint8, c_uint16, c_uint32
 )
-import ctypes.util
-import ctypes
+from ctypes.util import find_library
 
 ######################################################################
 #
@@ -1086,7 +1086,7 @@ class LinkLayerAddress(InterfaceAddress):
 #######################################################
 #
 
-libc = ctypes.CDLL(ctypes.util.find_library('c'), use_errno=True)
+libc = CDLL(find_library('c'), use_errno=True)
 
 def ifap_iter(ifap):
     """ generator to iterate over interfaces """
