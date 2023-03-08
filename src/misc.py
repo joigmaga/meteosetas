@@ -3,8 +3,6 @@
 import os
 import sys
 
-# module imports from perftool
-#
 from modlog import LOG_ERROR, Log
 
 # set log object for this module. We only report errors
@@ -42,4 +40,3 @@ def progname():
         file = 'main'
 
     return os.path.basename(file).rstrip('.py')
-

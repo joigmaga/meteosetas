@@ -9,9 +9,7 @@ import sys
 import atexit
 import pwd, grp
 
-# module imports from perftools
-#
-from modlog import *
+from modlog import LOG_ERROR, Log
 
 # set log object for this module. We only report errors
 #
