@@ -1,4 +1,6 @@
-""" This module implements a wrapper to the socket interface adding SSL and other features """
+""" This module implements a wrapper to the socket interface adding SSL and other features
+    It could make sense years ago in Python 2.something when subclassing 'socket' was probably
+    not a good idea """
 
 import sys
 import os
@@ -52,9 +54,9 @@ has_epoll = sys.platform.startswith('linux')
 
 # list of functions available with 'from modsocket import *'
 #
-__all__ = ["server_start", "conn_create",
-           "schedule_server", "schedule_async_server", "poll_async_server"]
-__all__.extend(os._get_exports_list(socket))
+#__all__ = ["server_start", "conn_create",
+#           "schedule_server", "schedule_async_server", "poll_async_server"]
+#__all__.extend(os._get_exports_list(socket))
 
 ##########################################
 # log object for this module
@@ -194,6 +196,7 @@ class Mysocket(object):
         # if that fails, the appropiate exception will be raised
         #
         try:
+            lg.log(LOG_ERROR, "checking for attribute: %s", name)
             attr = getattr(sock, name)
         except AttributeError:
             raise excp
@@ -211,27 +214,33 @@ class Mysocket(object):
             setdefaulttimeout(accept_timeout)
 
         try:
-            newsock, addrport = self.accept()
+            newsock, sockaddr = sock.accept()
         except timeout as te:
             lg.log(LOG_ERROR, 'Socket accept error: "%s"', str(te))
             res     = errno.ETIMEDOUT
             addr    = NULL_ADDR
+            port    = 0
+            scopeid = 0
             newsock = None
         except OSError as ose:
             if ose.errno != errno.EAGAIN:
                 lg.log(LOG_ERROR, 'Socket accept error: "%s"', ose.strerror)
             res     = ose.errno
             addr    = NULL_ADDR
+            port    = 0
+            scopeid = 0
             newsock = None
         else:
-            res  = OK
-            addr = addrport[0]
+            res     = OK
+            addr    = sockaddr[0]
+            port    = sockaddr[1]
+            scopeid = sockaddr[3] if self.family == AF_INET6 else 0
 
         mynewsock = None
         if newsock:
             mynewsock = Mysocket(newsock)
 
-        return res, mynewsock, addr
+        return res, mynewsock, addr, port, scopeid
 
     def conn_check(self):
         """ check whether socket has data ready for reading without actually reading """
@@ -383,26 +392,47 @@ def read_pass_file(passfile=DFL_PASSFILE):
 def server_start(host, port=PORT, backlog=BACKLOG, reuse_port=False, secdesc=None):
     """ start a server on a given address/port """
 
-    sock = socket()
+    sock = None
 
     try:
-        sock.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
-        if reuse_port:
-            sock.setsockopt(SOL_SOCKET, SO_REUSEPORT, 1)
-        sock.bind((host, port))
-        sock.listen(backlog)
-    except OSError as ose:
-        lg.log(LOG_ERROR, 'Socket configuration error "%s"', ose.strerror)
-        sock.close()
-        sock = None
-    else:
-        if secdesc:
-            context = secdesc.context
-            try:
-                sock = context.wrap_socket(sock, server_side=True)
-            except ssl.SSLError as sse:
-                lg.log(LOG_ERROR, 'SSL socket wrap error "%s"', sse)
-                sock = None
+        addrlist = getaddrinfo(host, port, AF_UNSPEC, SOCK_STREAM)
+    except gaierror as se:
+        lg.log(LOG_ERROR, 'Address resolution error "%s"', se.strerror)
+        return None
+
+    for res in addrlist:
+        af, socktype, proto, _, sa = res
+        try:
+            sock = socket(af, socktype, proto)
+        except OSError as ose:
+            lg.log(LOG_ERROR, 'Socket creation error "%s"', ose.strerror)
+            break
+
+        try:
+            sock.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+            if reuse_port:
+                sock.setsockopt(SOL_SOCKET, SO_REUSEPORT, 1)
+            sock.bind(sa)
+            sock.listen(backlog)
+        except OSError:
+            sock.close()
+            sock = None
+            continue
+        else:
+            break
+
+    if not sock:
+        lg.log(LOG_ERROR, 'could not bind to host: %s, port: %d', host, port)
+        return sock
+
+    if secdesc:
+        context = secdesc.context
+        try:
+            sock = context.wrap_socket(sock, server_side=True)
+        except ssl.SSLError as sse:
+            lg.log(LOG_ERROR, 'SSL socket wrap error "%s"', sse)
+            sock.close()
+            sock = None
 
     mysock = None
     if sock:
