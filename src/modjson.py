@@ -34,12 +34,6 @@ class InvalidArgument(Exception):
 # Internal functions
 #
 
-# encode string as a sequence of 'iso-latin-1' bytes, keeping backslashes and escaping unicode
-# chars as sequences of bytes in the form \uhhhh or \Uhhhhhhhh
-# Then decode as 'utf-8' string interpreting all the escape sequences
-# 
-#    str.encode('raw_unicode_escape').decode('unicode_escape')
-
 def _unescape(string):
     """ encode string as a sequence of 'iso-latin-1' bytes, keeping backslashes and escaping unicode
         chars with code point > 255 as sequences of bytes with format b'\\uhhhh' or b'\\Uhhhhhhhh'
@@ -294,7 +288,7 @@ def qstring(s):
         c = ior.read(1)
 
     if inquote:
-        raise InvalidArgument("unballanced quotes in string: '%s'" % token)
+        raise InvalidArgument("unbalanced quotes in string: '%s'" % token)
 
     token += _get_token(iow)
     last_item = _typecast(token, isquoted)

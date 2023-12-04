@@ -4,8 +4,7 @@
 
 import sys
 import os
-import socket
-from socket import *
+from socket import socket, AF_INET, AF_INET6, SOCK_STREAM
 import ssl
 import errno
 import select
@@ -19,7 +18,7 @@ from modlog import LOG_ERROR, Log
 #
 PORT     = 80
 BACKLOG  = 128
-BUFFSIZE = 4096
+BUFFSIZE = 8192
 
 # Errors 1 and greater are reported as errno error codes
 # The following statuses correspond to generic responses
@@ -28,10 +27,11 @@ OK    =  0
 ERROR = -1
 EOF   = -2
 
-DFL_CERTFILE = "certfile.pem"
-DFL_KEYFILE  = "keyfile.key"
+# change this to match your certificate
+#
+DFL_CERTFILE = "/etc/letsencrypt/live/www.acme.com/fullchain.pem"
+DFL_KEYFILE  = "/etc/letsencrypt/live/www.acme.com/privkey.pem"
 DFL_PASSFILE = None
-#DFL_PASSFILE = "passfile.pwd"
 
 NULL_ADDR = ""
 
@@ -39,23 +39,31 @@ DFL_SSL_SERVER_PROTOCOL = ssl.PROTOCOL_TLS_SERVER
 DFL_SSL_CLIENT_PROTOCOL = ssl.PROTOCOL_TLS_CLIENT
 
 DFL_SSL_SERVER_CIPHERS = "HIGH:RSA:!MD5"
-DFL_SSL_CLIENT_CIPHERS = ':'.join(("ECDHE-ECDSA-AES128-GCM-SHA256",
+DFL_SSL_CLIENT_CIPHERS = ':'.join(("TLS_AES_256_GCM_SHA384",
+                                   "TLS_CHACHA20_POLY1305_SHA256",
+                                   "TLS_AES_128_GCM_SHA256",
                                    "ECDHE-ECDSA-AES256-GCM-SHA384",
-                                   "EECDH+AES128",
-                                   "RSA+AES128",
-                                   "EECDH+AES256",
-                                   "RSA+AES256",
-                                   "EECDH+CHACHA20",
-                                   "EECDH+3DES",
-                                   "RSA+3DES",
-                                   "!MD5"))
+                                   "ECDHE-RSA-AES256-GCM-SHA384",
+                                   "ECDHE-ECDSA-AES128-GCM-SHA256",
+                                   "ECDHE-RSA-AES128-GCM-SHA256",
+                                   "ECDHE-ECDSA-CHACHA20-POLY1305",
+                                   "ECDHE-RSA-CHACHA20-POLY1305",
+                                   "ECDHE-ECDSA-AES256-SHA384",
+                                   "ECDHE-RSA-AES256-SHA384",
+                                   "ECDHE-ECDSA-AES128-SHA256",
+                                   "ECDHE-RSA-AES128-SHA256",
+                                   "DHE-RSA-AES256-GCM-SHA384",
+                                   "DHE-RSA-AES128-GCM-SHA256",
+                                   "DHE-RSA-AES256-SHA256",
+                                   "DHE-RSA-AES128-SHA256"))
 
 has_epoll = sys.platform.startswith('linux')
 
 # list of functions available with 'from modsocket import *'
 #
-#__all__ = ["server_start", "conn_create",
-#           "schedule_server", "schedule_async_server", "poll_async_server"]
+__all__ = ["server_start", "conn_create",
+           "schedule_server", "schedule_async_server", "poll_async_server"]
+#
 #__all__.extend(os._get_exports_list(socket))
 
 ##########################################
@@ -80,92 +88,83 @@ class Secdesc(object):
         # - system default certificate for servers
         # - no certificate for clients by default
         #
+        certfile = None
+        keyfile  = None
+        passfile = None
+
         if cert is not None:
-            self.certfile, self.keyfile, self.passfile = cert
+            certfile, keyfile, passfile = cert
         elif server_side:
-            self.certfile = DFL_CERTFILE
-            self.keyfile  = DFL_KEYFILE
-            self.passfile = DFL_PASSFILE
-        else:
-            self.certfile  = None
-            self.keyfile   = None
-            self.passfile  = None
+            certfile = DFL_CERTFILE
+            keyfile  = DFL_KEYFILE
+            passfile = DFL_PASSFILE
 
         if server_side:
-            self.verify = verify_client_cert
+            verify = verify_client_cert
         else:
-            self.verify = verify_server_cert
-        self.match  = match_hostname
-        self.cafile = cafile
-        self.server = server_side
+            verify = verify_server_cert
 
         # Generate a default context with all the parameters gathered so far.
         # Can be changed later by modifying object attributes and rerunning 'build_x_context()'
         #
         if server_side:
-            self.protocol = DFL_SSL_SERVER_PROTOCOL
-            self.ciphers  = DFL_SSL_SERVER_CIPHERS
-            self.purpose  = ssl.Purpose.CLIENT_AUTH
-            self.context  = self.build_server_context()
+            protocol = DFL_SSL_SERVER_PROTOCOL
+            ciphers  = DFL_SSL_SERVER_CIPHERS
+            purpose  = ssl.Purpose.CLIENT_AUTH
+            context  = self.build_server_context()
         else:
-            self.protocol = DFL_SSL_CLIENT_PROTOCOL
-            self.ciphers  = DFL_SSL_CLIENT_CIPHERS
-            self.purpose  = ssl.Purpose.SERVER_AUTH
-            self.context  = self.build_client_context()
+            protocol = DFL_SSL_CLIENT_PROTOCOL
+            ciphers  = DFL_SSL_CLIENT_CIPHERS
+            purpose  = ssl.Purpose.SERVER_AUTH
+            context  = self.build_client_context()
 
-    def build_server_context(self):
-        """ build SSL context for a server socket """
-
-        context = ssl.SSLContext(self.protocol)
-        context.set_ciphers(self.ciphers)
-        context.verify_mode = ssl.CERT_NONE
-
-        # Client certificate verification required
-        # Supply a convenient CA to verify that the certificate presented by the client
-        # has been issued by such a CA
-        # Otherwise the certficate is checked against all the CAs defined in the system
-        # so any valid certificate will pass the check
-        #
-        if self.verify:
-            if self.cafile is not None:
-                context.load_verify_locations(self.cafile)
-            else:
-                context.load_default_certs()
-            context.verify_mode = ssl.CERT_REQUIRED
-
-        # Always build a certificate for presenting to clients
-        #
-        context.load_cert_chain(self.certfile, self.keyfile, self.passfile)
-
-        return context
-
-    def build_client_context(self):
-        """ build SSL context for a client socket """
-
-        context = ssl.SSLContext(self.protocol)
-        context.set_ciphers(self.ciphers)
+        context = ssl.SSLContext(protocol)
+        context.set_ciphers(ciphers)
         context.check_hostname = False
         context.verify_mode    = ssl.CERT_NONE
 
-        if self.verify:
-            if self.cafile is not None:
-                context.load_verify_locations(self.cafile)
-            else:
-                context.load_default_certs()
-            context.verify_mode    = ssl.CERT_REQUIRED
-            context.check_hostname = self.match
+        # Load file with CA certificates for peer certificate validation
+        #
+        if verify:
+            try:
+                if cafile is not None:
+                    context.load_verify_locations(cafile)
+                else:
+                    context.load_default_certs(purpose)
+            except SSLError as ssle:
+                lg.log(LOG_ERROR, "SSL CA certificate file load error: %s", ssle.strerror)
+                return None
 
-        if self.certfile and self.keyfile:
-            context.load_cert_chain(self.certfile, self.keyfile, self.passfile)
+            context.verify_mode = ssl.CERT_REQUIRED
+            context.check_hostname = match_hostname
+
+        # Load local certificate and its private key for signing and presenting to remote peer
+        #
+        try:
+            context.load_cert_chain(certfile, keyfile, passfile)
+        except SSLError as ssle:
+            lg.log(LOG_ERROR, "SSL certificate load error: %s", ssle.strerror)
+            context = None
 
         return context
 
 class Mysocket(object):
     """ A wrapper class to the socket interface enhanced with SSL methods """
 
-    def __init__(self, sock=None):
+    def __init__(self, family=AF_INET, type=SOCK_STREAM, proto=0,
+                       sock=None, secdesc=None):
 
-        self.sock = sock
+        if sock:
+            self.sock = sock
+        else:
+            self.sock = socket.socket(family, type, proto)
+ 
+        if secdesc:
+            sock = context.wrap_socket(sock, server_side=False, server_hostname=host)
+            secdesc.context.wrap_
+            self.secdesc = secdesc
+
+        self.secured = False
 
     def __getattribute__(self, name):
         """ method selection changed to look for socket/sslsocket methods
@@ -196,7 +195,6 @@ class Mysocket(object):
         # if that fails, the appropiate exception will be raised
         #
         try:
-            lg.log(LOG_ERROR, "checking for attribute: %s", name)
             attr = getattr(sock, name)
         except AttributeError:
             raise excp
@@ -471,7 +469,7 @@ def schedule_async_server(sock, *other):
 
     # select.EPOLLEXCLUSIVE flag is not available in RH7 libraries
     #
-    EPOLLEXCLUSIVE = 268435456
+    EPOLLEXCLUSIVE = 0x10000000
 
     flags = select.POLLIN
     if has_epoll:
