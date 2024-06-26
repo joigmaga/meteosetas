@@ -4,7 +4,9 @@
 
 import sys
 import os
-from socket import socket, AF_INET, AF_INET6, SOCK_STREAM
+from socket import socket
+from socket import AF_INET, AF_INET6, SOCK_STREAM
+from socket import getdefaulttimeout, setdefaulttimeout
 import ssl
 import errno
 import select
@@ -26,6 +28,13 @@ BUFFSIZE = 8192
 OK    =  0
 ERROR = -1
 EOF   = -2
+
+# Wether peer certificate is verified or just ignored
+# By default server certificates are verified whereas client certificates are not
+#
+DFL_VERIFY    = 0
+VERIFY_ON     = 1
+VERIFY_OFF    = -1
 
 # change this to match your certificate
 #
@@ -76,95 +85,157 @@ lg = Log(file='stderr', facility="SOCKET")
 class Secdesc(object):
     """ A security descriptor object with SSL options """
 
-    def __init__(self, cert = None,
-                       verify_client_cert=False,
-                       verify_server_cert=True,
+    def __init__(self, certfile=None,
+                       keyfile=None,
+                       passfile=None,
+                       verify_cert=DFL_VERIFY,
+                       protocol=None,
+                       ciphers=None,
                        match_hostname=True,
+                       server_hostname=None,
                        cafile=None,
                        server_side=False):
+
+        if verify_cert == VFY_DEFAULT:
+            self.verify = server_side is True
+        else:
+            self.verify = verify_cert > 0         
+
+        self.isserver = server_side
+        self.match    = match_hostname
+        self.cafile   = cafile
+
+        self.hostname = server_hostname
+        if server_side:
+            self.hostname = None
 
         # Certificate selection:
         # - user provided (client or server)
         # - system default certificate for servers
         # - no certificate for clients by default
         #
-        certfile = None
-        keyfile  = None
-        passfile = None
-
-        if cert is not None:
-            certfile, keyfile, passfile = cert
-        elif server_side:
+        if server_side and certfile is None:
             certfile = DFL_CERTFILE
             keyfile  = DFL_KEYFILE
             passfile = DFL_PASSFILE
 
-        if server_side:
-            verify = verify_client_cert
-        else:
-            verify = verify_server_cert
-
+        self.certfile = certfile
+        self.keyfile  = keyfile
+        self.passfile = passfile
+            
         # Generate a default context with all the parameters gathered so far.
         # Can be changed later by modifying object attributes and rerunning 'build_x_context()'
         #
+        self.protocol = protocol
+        self.ciphers  = ciphers
         if server_side:
-            protocol = DFL_SSL_SERVER_PROTOCOL
-            ciphers  = DFL_SSL_SERVER_CIPHERS
-            purpose  = ssl.Purpose.CLIENT_AUTH
-            context  = self.build_server_context()
+            if protocol is None:
+                self.protocol = DFL_SSL_SERVER_PROTOCOL
+            if ciphers is None:
+                self.ciphers = DFL_SSL_SERVER_CIPHERS
+            self.purpose = ssl.Purpose.CLIENT_AUTH
+            self.context = self.build_server_context()
         else:
-            protocol = DFL_SSL_CLIENT_PROTOCOL
-            ciphers  = DFL_SSL_CLIENT_CIPHERS
-            purpose  = ssl.Purpose.SERVER_AUTH
-            context  = self.build_client_context()
+            if protocol is None:
+                self.protocol = DFL_SSL_CLIENT_PROTOCOL
+            if ciphers is None:
+                self.ciphers  = DFL_SSL_CLIENT_CIPHERS
+            self.purpose  = ssl.Purpose.SERVER_AUTH
+            self.context  = self.build_client_context()
 
-        context = ssl.SSLContext(protocol)
-        context.set_ciphers(ciphers)
+    def build_server_context(self):
+        """ build SSL context for a server socket """
+
+        context = ssl.SSLContext(self.protocol)
+        context.set_ciphers(self.ciphers)
         context.check_hostname = False
         context.verify_mode    = ssl.CERT_NONE
 
+        # Client certificate verification required (default is no verification)
+        # Supply a convenient CA to verify that the certificate presented by the client
+        # has been issued by such a CA
+        # Otherwise the certficate is checked against all the CAs defined in the system
+        # so any valid certificate will pass the check
+        #
+
         # Load file with CA certificates for peer certificate validation
         #
-        if verify:
+        if self.verify:
             try:
-                if cafile is not None:
-                    context.load_verify_locations(cafile)
+                if self.cafile is not None:
+                    context.load_verify_locations(self.cafile)
                 else:
-                    context.load_default_certs(purpose)
+                    context.load_default_certs(self.purpose)
             except SSLError as ssle:
                 lg.log(LOG_ERROR, "SSL CA certificate file load error: %s", ssle.strerror)
                 return None
 
             context.verify_mode = ssl.CERT_REQUIRED
-            context.check_hostname = match_hostname
 
         # Load local certificate and its private key for signing and presenting to remote peer
         #
         try:
-            context.load_cert_chain(certfile, keyfile, passfile)
+            context.load_cert_chain(self.certfile, self.keyfile, self.passfile)
         except SSLError as ssle:
             lg.log(LOG_ERROR, "SSL certificate load error: %s", ssle.strerror)
             context = None
 
         return context
 
+    def build_client_context(self):
+        """ build SSL context for a client socket """
+
+        context = ssl.SSLContext(self.protocol)
+        context.set_ciphers(self.ciphers)
+        context.check_hostname = False
+        context.verify_mode    = ssl.CERT_NONE
+
+        if self.verify:
+            try:
+                if self.cafile is not None:
+                    context.load_verify_locations(self.cafile)
+                else:
+                    context.load_default_certs(self.purpose)
+            except SSLError as ssle:
+                lg.log(LOG_ERROR, "SSL CA certificate file load error: %s", ssle.strerror)
+                return None
+
+            context.verify_mode    = ssl.CERT_REQUIRED
+            context.check_hostname = self.match
+
+        if self.certfile:
+            try:
+                context.load_cert_chain(self.certfile, self.keyfile, self.passfile)
+            except SSLError as ssle:
+                lg.log(LOG_ERROR, "SSL certificate load error: %s", ssle.strerror)
+                context = None
+
+        return context
+
 class Mysocket(object):
     """ A wrapper class to the socket interface enhanced with SSL methods """
 
-    def __init__(self, family=AF_INET, type=SOCK_STREAM, proto=0,
-                       sock=None, secdesc=None):
+    def __init__(self, sock=None, family=AF_INET, secdesc=None):
 
-        if sock:
-            self.sock = sock
-        else:
-            self.sock = socket.socket(family, type, proto)
- 
-        if secdesc:
-            sock = context.wrap_socket(sock, server_side=False, server_hostname=host)
-            secdesc.context.wrap_
-            self.secdesc = secdesc
+        if sock is None:
+            try:
+                sock = socket(family, SOCK_STREAM, 0)
+            except OSError as ose:
+                lg.log(LOG_ERROR, "socket creation error: %s", ose.strerror)
 
-        self.secured = False
+        self.sock    = sock
+        self._sock   = None
+        self.secdesc = secdesc
+
+        if secdesc and secdesc.context is not None:
+            try:
+                sslsock = secdec.context.wrap_socket(sock, server_side=secdesc.isserver,
+                                                           server_hostname=secdesc.hostname)
+            except SSLError as ssle:
+                lg.log(LOG_ERROR, "ssl socket wrap error: %s", ssle.strerror)
+            else:
+                self.sock  = sslsock
+                self._sock = sock
 
     def __getattribute__(self, name):
         """ method selection changed to look for socket/sslsocket methods
@@ -174,30 +245,28 @@ class Mysocket(object):
         #
         mygetattr = super().__getattribute__
 
-        # try local methods first
-        #
-        excp = None
-
         try:
+            # try local methods, like conn_create() or server_create(), first
             attr = mygetattr(name)
-        except AttributeError as ae:
-            excp = ae
+        except AttributeError:
+            # attribute must be a socket/ssl method
+            pass
         else:
             return attr
 
-        # raise exception if no socket has been loaded yet
+        # check that 'sock' attribute is not empty before dereferencing
         #
         sock = mygetattr('sock')
         if sock is None:
-            raise excp
+            raise AttributeError("%s object has not been assigned a valid socket" % self.__class__)
 
-        # last chance is checking socket/ssl methods
-        # if that fails, the appropiate exception will be raised
-        #
         try:
+            # second attempt. try socket/SSLsocket methods
             attr = getattr(sock, name)
         except AttributeError:
-            raise excp
+            # raise the appropriate exception
+            raise AttributeError("'%s' is not an attribute of either %s or %s object",
+                                        name, self.__class__, sock.__class__)
 
         return attr
 
@@ -212,7 +281,7 @@ class Mysocket(object):
             setdefaulttimeout(accept_timeout)
 
         try:
-            newsock, sockaddr = sock.accept()
+            newsock, sockaddr = self.sock.accept()
         except timeout as te:
             lg.log(LOG_ERROR, 'Socket accept error: "%s"', str(te))
             res     = errno.ETIMEDOUT

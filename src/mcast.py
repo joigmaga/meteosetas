@@ -100,9 +100,9 @@ from select import select
 from ctypes import Structure, pointer, POINTER, cast, sizeof, c_uint8, c_uint16, c_uint32
 
 # local imports
-from getifaddrs import (get_interface, get_interface_address, find_interface_address,
+from util.getifaddrs import (get_interface, get_interface_address, find_interface_address,
                         struct_sockaddr_in, struct_sockaddr_in6,)
-from modlog import LOG_INFO, LOG_ERROR, Log
+from util.modlog import LOG_INFO, LOG_ERROR, Log
 
 #################
 # Constants
