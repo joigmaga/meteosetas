@@ -1,0 +1,24 @@
+class McastSocket(socket)
+
+    def bind(self, iface, service)
+
+    def close(self)
+
+class McastReceive(McastSocket)
+
+    def set_recvoptions(self, reuseaddress=-1, reuseport=-1)
+
+    def join(self, mgroup, iface=None, source=None)
+
+    def leave(self, mgroup, iface=None, source=None)
+
+    def recvfrom(self)
+
+class McastSend(McastSocket)
+
+    def set_sendoptions(self, iface=None, loop=-1, ttl=-1, prec=-1)
+
+    def connect(self, mgroup, service)
+
+    def sendto(self, buff, mgroup, service)
+
