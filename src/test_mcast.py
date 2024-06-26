@@ -6,9 +6,9 @@ from time import sleep
 from select import select
 from argparse import ArgumentParser
 
-from getifaddrs import get_interface, get_interface_address
 from mcast import McastSocket, IPM_IP, IPM_IPV6, IPM_BOTH, AF_INET, AF_INET6, SCP_LINKLOCAL
-from modlog import LOG_INFO, LOG_ERROR, Log
+from util.getifaddrs import get_interface, get_interface_address
+from util.modlog import LOG_INFO, LOG_ERROR, Log
 
 def who_serves():
     """ decide who takes the role of either client or server before running the test """
