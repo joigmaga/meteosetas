@@ -97,12 +97,12 @@ from socket import (socket, inet_pton, getservbyname, htons,
                     IPV6_MULTICAST_LOOP, IPV6_MULTICAST_HOPS, IPV6_MULTICAST_IF, IPV6_TCLASS,
                     SOL_SOCKET, SO_REUSEADDR, SO_REUSEPORT,)
 from select import select
-from ctypes import Structure, pointer, POINTER, cast, sizeof, c_uint8, c_uint16, c_uint32
+from ctypes import (Structure, pointer, POINTER, cast, sizeof,
+                    c_byte, c_ushort, c_uint8, c_uint16, c_uint32)
 
 # local imports
-from util.getifaddrs import (get_interface, get_interface_address, find_interface_address,
-                        struct_sockaddr_in, struct_sockaddr_in6,)
-from util.modlog import LOG_INFO, LOG_ERROR, Log
+from util.custlogging import get_logger, ERROR, WARNING
+from util.getifaddrs  import get_interface, get_interface_address, find_interface_address
 
 #################
 # Constants
@@ -148,8 +148,8 @@ SCP_GLOBAL       = 0x0e
 
 # log object for this module
 #
-lg = Log(file='stderr', facility=__name__, loglevel=LOG_INFO)
-
+logger = get_logger(__name__, WARNING)
+#
 #     Platform dependencies
 #     from netinet/in.h
 #
@@ -169,10 +169,59 @@ elif PLATFORM.startswith('linux'):
     MCAST_JOIN_SOURCE_GROUP   = 46 
     MCAST_LEAVE_SOURCE_GROUP  = 47 
 else:
-    lg.log(LOG_ERROR, "Non supported or non tested OS: %s. Exiting", PLATFORM)
+    logger.error("Non supported or non tested OS: %s. Exiting", PLATFORM)
     sys.exit(1)
 
-######################
+###################################################
+#
+#            C data structures
+#
+# generic sockaddr structure
+#
+class struct_sockaddr(Structure):
+    if PLATFORM == 'darwin':
+        _fields_ = [
+            ('sa_len',    c_uint8),
+            ('sa_family', c_uint8),
+            ('sa_data',   c_byte * 14),]
+    elif PLATFORM.startswith('linux'):
+        _fields_ = [
+            ('sa_family', c_ushort),
+            ('sa_data',   c_byte * 14),]
+
+# sockaddr structures for IPv4 and IPv6 addresses
+#
+class struct_sockaddr_in(Structure):
+    if PLATFORM == 'darwin':
+        _fields_ = [
+            ('sin_len',    c_uint8),
+            ('sin_family', c_uint8),
+            ('sin_port',   c_uint16),
+            ('sin_addr',   c_byte * 4),
+            ('sin_zero',   c_byte * 8)]
+    elif PLATFORM.startswith('linux'):
+        _fields_ = [
+            ('sin_family', c_ushort),
+            ('sin_port',   c_uint16),
+            ('sin_addr',   c_byte * 4)]
+
+class struct_sockaddr_in6(Structure):
+    if PLATFORM == 'darwin':
+        _fields_ = [
+            ('sin6_len',      c_uint8),
+            ('sin6_family',   c_uint8),
+            ('sin6_port',     c_uint16),
+            ('sin6_flowinfo', c_uint32),
+            ('sin6_addr',     c_byte * 16),
+            ('sin6_scope_id', c_uint32)]
+    elif PLATFORM.startswith('linux'):
+        _fields_ = [
+            ('sin6_family',   c_ushort),
+            ('sin6_port',     c_uint16),
+            ('sin6_flowinfo', c_uint32),
+            ('sin6_addr',     c_byte * 16),
+            ('sin6_scope_id', c_uint32)]
+#
 # C style structures
 # from netinet/in.h
 #
@@ -189,12 +238,10 @@ class struct_sockaddr_storage(Structure):
 
 class struct_group_req(Structure):
     if PLATFORM == 'darwin':
-        # _pack_   = 4
         _fields_ = [
             ('gr_interface',     c_uint32),
             ('gr_group',         struct_sockaddr_storage),]
     elif PLATFORM.startswith('linux'):
-        # _pack_ = 8
         _fields_ = [
             ('gr_interface',     c_uint32),
             ('gr_pad',           c_uint32),
@@ -202,13 +249,11 @@ class struct_group_req(Structure):
 
 class struct_group_source_req(Structure):
     if PLATFORM == 'darwin':
-        # _pack_   = 4
         _fields_ = [
             ('gsr_interface',    c_uint32),
             ('gsr_group',        struct_sockaddr_storage),
             ('gsr_source',       struct_sockaddr_storage),]
     elif PLATFORM.startswith('linux'):
-        # _pack_   = 8
         _fields_ = [
             ('gsr_interface',    c_uint32),
             ('gsr_pad',          c_uint32),
@@ -337,7 +382,7 @@ def get_service_port(service):
     try:
         port = getservbyname(service)
     except OSError as ose:
-        lg.log(LOG_ERROR, "invalid service: %s, %s", service, ose.strerror)
+        logger.error("invalid service: %s, %s", service, ose.strerror)
         port = None
 
     return port
@@ -388,7 +433,7 @@ class McastSocket(socket):
         elif ipmode in (IPM_IPV6, IPM_BOTH):
             family = AF_INET6
         else:
-            lg.log(LOG_ERROR, "Invalid address type option. socket not initialized")
+            logger.error("Invalid address type option. socket not initialized")
             self.state = ST_CLOSED
             return
 
@@ -423,14 +468,15 @@ class McastSocket(socket):
 
         # # allow for unicast datagram transmission
         # if not maddrobj.is_multicast():
-        #     lg.log(LOG_ERROR, "invalid multicast group: %s", mgroup)
+        #     logger.error("invalid multicast group: %s", mgroup)
         #     return address
         
         if self.family == AF_INET:
             address = maddrobj.address, port
             if maddrobj.family == AF_INET6:
-                lg.log(LOG_ERROR, "cannot reach ipv6 destination %s over ipv4 socket: %s",
-                       maddrobj.address)
+                logger.error("cannot reach ipv6 destination %s over ipv4 socket: %s",
+                        maddrobj.address)
+
         elif self.family == AF_INET6:
             if maddrobj.family == AF_INET:
                 address = maddrobj.ipv4mapped, port, 0, 0
@@ -509,18 +555,18 @@ class McastSocket(socket):
         # iface = None, "" or 0 are an indication to the kernel to select an interface
         # using routing information
         if iface and ifindex == 0:
-            lg.log(LOG_ERROR, "Invalid interface name or address: %s", iface)
+            logger.error("Invalid interface name or address: %s", iface)
             return None
 
         groupaddr = self._build_sockaddr(mgroup, check=CHK_MULTICAST)
         if not groupaddr:
-            lg.log(LOG_ERROR, "Invalid multicast group address: %s", mgroup)
+            logger.error("Invalid multicast group address: %s", mgroup)
             return None
 
         if source:
             sourceaddr = self._build_sockaddr(source, check=CHK_UNICAST)
             if not sourceaddr:
-                lg.log(LOG_ERROR, "Invalid unicast source addres: %s", source)
+                logger.error("Invalid unicast source addres: %s", source)
                 return None
             grp = struct_group_source_req()
             grp.gsr_interface = ifindex
@@ -538,11 +584,11 @@ class McastSocket(socket):
         tag = "join" if isjoin else "leave"
 
         if self.state == ST_CLOSED:
-            lg.log(LOG_ERROR, "cannot %s group. Socket is closed", tag)
+            logger.error("cannot %s group. Socket is closed", tag)
             return 1
 
         if isjoin and self.joined >= IP_MAX_MEMBERSHIPS:
-            lg.log(LOG_ERROR, "exceeded max number of multicast group %ss", tag)
+            logger.error("exceeded max number of multicast group %ss", tag)
             return 1
 
         if PLATFORM == 'darwin':
@@ -555,7 +601,7 @@ class McastSocket(socket):
             # Linux ipv6 sockets allow for joins on either family addresses
             maddrobj = get_address(mgroup)
             if not maddrobj:
-                lg.log(LOG_ERROR, "Invalid multicast group address: %s", mgroup)
+                logger.error("Invalid multicast group address: %s", mgroup)
                 return 1
             proto = 0
             if maddrobj.family == AF_INET:
@@ -581,7 +627,7 @@ class McastSocket(socket):
             #
             self.setsockopt(proto, option, bytes(value))
         except OSError as ose:
-            lg.log(LOG_ERROR, "Multicast %s group error (%d): %s", tag, ose.errno, ose.strerror)
+            logger.error("Multicast %s group error (%d): %s", tag, ose.errno, ose.strerror)
             return 1
 
         return 0
@@ -593,13 +639,13 @@ class McastSocket(socket):
         """ local interface to bind() """
 
         if self.state == ST_CLOSED:
-            lg.log(LOG_ERROR, "cannot bind socket to address. Socket is closed")
+            logger.error("cannot bind socket to address. Socket is closed")
             return 1
 
         address = self._get_interface_sockaddr(ifaddr, service)
 
         if not address:
-            lg.log(LOG_ERROR, "Invalid interface name or address: %s", ifaddr)
+            logger.error("Invalid interface name or address: %s", ifaddr)
             return 1
 
         # if binding to a non zero port set to reuse address and, optionally,
@@ -612,7 +658,7 @@ class McastSocket(socket):
         try:
             super().bind(address)
         except OSError as ose:
-            lg.log(LOG_ERROR, "Error binding mcast service to socket: %s", ose.strerror)
+            logger.error("Error binding mcast service to socket: %s", ose.strerror)
             return 1
 
         self.state = ST_BOUND
@@ -624,19 +670,19 @@ class McastSocket(socket):
             datagrams can be sent with 'send()' without specifying group and service """    
 
         if self.state == ST_CLOSED:
-            lg.log(LOG_ERROR, "cannot connect socket to remote address. Socket is closed")
+            logger.error("cannot connect socket to remote address. Socket is closed")
             return 1
     
         address = self._get_multicast_sockaddr(mgroup, service)
 
         if not address:
-            lg.log(LOG_ERROR, "Invalid multicast group address: %s", mgroup)
+            logger.error("Invalid multicast group address: %s", mgroup)
             return 1
 
         try:
             super().connect(address) 
         except OSError as ose:
-            lg.log(LOG_ERROR, "cannot connect to remote address (%d), %s", ose.errno, ose.strerror)
+            logger.error("cannot connect to remote address (%d), %s", ose.errno, ose.strerror)
             return 1
 
         self.state = ST_CONNECTED
@@ -647,7 +693,7 @@ class McastSocket(socket):
         """ receive datagrams from socket """
 
         if self.state == ST_CLOSED:
-            lg.log(LOG_ERROR, "cannot receive datagrams on socket. Socket is closed")
+            logger.error("cannot receive datagrams on socket. Socket is closed")
             return 1
 
         buff, address = super().recvfrom(BUFFSIZE)
@@ -670,19 +716,19 @@ class McastSocket(socket):
         """ send datagram to a remote mgroup/service combination """
 
         if self.state == ST_CLOSED:
-            lg.log(LOG_ERROR, "cannot send datagrams on socket. Socket is closed")
+            logger.error("cannot send datagrams on socket. Socket is closed")
             return 0
     
         address = self._get_multicast_sockaddr(mgroup, service)
 
         if not address:
-            lg.log(LOG_ERROR, "Invalid multicast group address: %s", mgroup)
+            logger.error("Invalid multicast group address: %s", mgroup)
             return 0
 
         try:
             sent = super().sendto(buffer, address)
         except OSError as ose:
-            lg.log(LOG_ERROR, "error sending datagram to dest %s: %s", address, ose.strerror)
+            logger.error("error sending datagram to dest %s: %s", address, ose.strerror)
             sent = 0
 
         return sent
@@ -717,7 +763,7 @@ class McastSocket(socket):
         """ set the socket receiving options """
 
         if self.state == ST_CLOSED:
-            lg.log(LOG_ERROR, "cannot set options on socket. Socket is closed")
+            logger.error("cannot set options on socket. Socket is closed")
             return 1
 
         try:
@@ -726,7 +772,7 @@ class McastSocket(socket):
             if reuseport in (0, 1) and reuseport != self.getsockopt(SOL_SOCKET, SO_REUSEPORT):
                 self.setsockopt(SOL_SOCKET, SO_REUSEPORT, reuseport)
         except OSError as ose:
-            lg.log(LOG_ERROR, "Error trying to set socket receiving options: %s", ose.strerror)
+            logger.error("Error trying to set socket receiving options: %s", ose.strerror)
             return 1
 
         return 0
@@ -736,7 +782,7 @@ class McastSocket(socket):
             options include output interface, ttl, loopback reception and IP precedence """
 
         if self.state == ST_CLOSED:
-            lg.log(LOG_ERROR, "cannot set options on socket. Socket is closed")
+            logger.error("cannot set options on socket. Socket is closed")
             return 1
 
         if self.family == AF_INET:
@@ -747,7 +793,7 @@ class McastSocket(socket):
             opt_tos  = IP_TOS
             addrobj  = get_address(fwdif)
             if fwdif and not addrobj:
-                lg.log(LOG_ERROR, "Invalid forwarding interface address: %s", fwdif)
+                logger.error("Invalid forwarding interface address: %s", fwdif)
                 return None
             forwint  = None
             if addrobj:
@@ -760,7 +806,7 @@ class McastSocket(socket):
             opt_tos  = IPV6_TCLASS
             forwint  = get_interface_index(fwdif)
             if fwdif and forwint == 0:
-                lg.log(LOG_ERROR, "Invalid forwarding interface name: %s", forwint)
+                logger.error("Invalid forwarding interface name: %s", forwint)
                 return None
 
         try:
@@ -773,7 +819,7 @@ class McastSocket(socket):
             if prec > 0 and prec != self.getsockopt(proto, opt_tos):
                 self.setsockopt(proto, opt_tos,  (prec & 0x07) << 5)
         except OSError as ose:
-            lg.log(LOG_ERROR, "Error trying to set mcast send socket options: %s", ose.strerror)
+            logger.error("Error trying to set mcast send socket options: %s", ose.strerror)
             return 1
 
         return 0
@@ -824,14 +870,14 @@ def mcast_server(grouplist, port, interface):
     #
     port = get_service_port(port)
     if port is None:
-        lg.log(LOG_ERROR, "error: Invalid port: %s", str(port))
+        logger.error("error: Invalid port: %s", str(port))
         return 1
     
     # check joining interface
     #
     ifindex = get_interface_index(interface)
     if ifindex == 0:
-        lg.log(LOG_ERROR, "error: Invalid interface: %s", interface)
+        logger.error("error: Invalid interface: %s", interface)
         return 1
 
     # build the per-family lists of multicast groups
@@ -851,7 +897,7 @@ def mcast_server(grouplist, port, interface):
             if tulen > 2:
                 source = tupl[2]
         else:
-            lg.log(LOG_ERROR, "Invalid entry in group list: %s", str(tupl))
+            logger.error("Invalid entry in group list: %s", str(tupl))
             continue
 
         maddr = get_address(group)
@@ -860,14 +906,14 @@ def mcast_server(grouplist, port, interface):
         elif maddr and maddr.family == AF_INET6:
             v6groups.append((group, ifaddr, source))
         else:
-            lg.log(LOG_ERROR, "Invalid multicast group: %s", group)
+            logger.error("Invalid multicast group: %s", group)
 
     # check that at least one list is not empty
     #
     want4 = len(v4groups) > 0
     want6 = len(v6groups) > 0
     if not want4 and not want6:
-        lg.log(LOG_ERROR, "error: No multicast group addresses available")
+        logger.error("error: No multicast group addresses available")
         return 1
 
     # socket creation and binding
