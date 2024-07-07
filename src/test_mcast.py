@@ -8,7 +8,7 @@ from argparse import ArgumentParser
 
 from mcast import McastSocket, IPM_IP, IPM_IPV6, IPM_BOTH, AF_INET, AF_INET6, SCP_LINKLOCAL
 from util.getifaddrs import get_interface, get_interface_address
-from util.modlog import LOG_INFO, LOG_ERROR, Log
+from util.custlogging import get_logger, ERROR, WARNING, INFO
 
 def who_serves():
     """ decide who takes the role of either client or server before running the test """
@@ -85,7 +85,7 @@ def run_client():
     msock4.set_sendoptions(fwdif=mt_ifaddr4,      loop=0, ttl=1)
     msock6.set_sendoptions(fwdif=opts.interface,  loop=0, ttl=1)
     msock46.set_sendoptions(fwdif=opts.interface, loop=0, ttl=1)
-    lg.log(LOG_INFO, "sending unicast messages to server ...")
+    logger.info("sending unicast messages to server ...")
 
     # slow down a bit the unicast datagram rate so they don't look like a flood attack
     to4 = False
@@ -96,21 +96,21 @@ def run_client():
         for msock in ready:
             if msock == msock4:
                 msock.sendto(msg, mt_rem4, mt_port4)
-                lg.log(LOG_INFO, "ipv4 socket")
+                logger.info("ipv4 socket")
                 socklist.remove(msock)
             elif msock == msock6:
                 msock.sendto(msg, mt_rem6, mt_port6)
-                lg.log(LOG_INFO, "ipv6 only socket")
+                logger.info("ipv6 only socket")
                 socklist.remove(msock)
             elif msock == msock46 and not to4:
                 sleep(0.5)
                 msock.sendto(msg, mt_rem4, mt_port46)
-                lg.log(LOG_INFO, "ipv4 to v4/v6 socket")
+                logger.info("ipv4 to v4/v6 socket")
                 to4 = True
             else:
                 sleep(0.5)
                 msock.sendto(msg, mt_rem6, mt_port46)
-                lg.log(LOG_INFO, "ipv6 to v4/v6 socket")
+                logger.info("ipv6 to v4/v6 socket")
                 socklist.remove(msock)
 
     # response from server to unicast datagrams
@@ -122,7 +122,7 @@ def run_client():
 
         for msock in ready:
             buff, addr, port = msock.recvfrom()
-            lg.log(LOG_INFO, "received message from %s (%d): %s", addr, port, buff)
+            logger.info("received message from %s (%d): %s", addr, port, buff)
 
     # multicast 
     #
@@ -131,7 +131,7 @@ def run_client():
         msock4.set_sendoptions(loop=1)
         msock6.set_sendoptions(loop=1)
         msock46.set_sendoptions(loop=1)
-    lg.log(LOG_INFO, "sending multicast messages to server ...")
+    logger.info("sending multicast messages to server ...")
     msock4.sendto(msg,  mt_group4, mt_port4)
     msock6.sendto(msg,  mt_group6, mt_port6)
     msock46.sendto(msg, mt_group4, mt_port46)
@@ -146,7 +146,7 @@ def run_client():
 
         for msock in ready:
             buff, addr, port = msock.recvfrom()
-            lg.log(LOG_INFO, "received response from %s (%d): %s", addr, port, buff)
+            logger.info("received response from %s (%d): %s", addr, port, buff)
 
     msock4.close()
     msock6.close()
@@ -205,9 +205,9 @@ def run_server():
             # read socket and reply unicast to client
             buff, addr, port = msock.recvfrom()
             _, lport = msock.getsockname()[:2]
-            lg.log(LOG_INFO, "received message from %s for service (%d): %s",
+            logger.info("received message from %s for service (%d): %s",
                    addr, lport, buff)
-            lg.log(LOG_INFO, "replying to client")
+            logger.info("replying to client")
             msock.sendto(msg, addr, port)
 
     msock4.leave(mt_group4,  mt_index)
@@ -233,7 +233,7 @@ def run_server():
 
 #####
 #
-lg = Log(file='stderr', facility="MCAST_TEST", loglevel=LOG_INFO)
+logger = get_logger(__name__, INFO)
 
 PLATFORM = platform
 
@@ -246,13 +246,13 @@ opts = argp.parse_args()
 
 mt_ifc = get_interface(opts.interface)
 if not mt_ifc:
-    lg.log(LOG_ERROR, "invalid interface: %s", opts.interface)
+    logger.error("invalid interface: %s", opts.interface)
     exit(1) 
 mt_index  = mt_ifc.index
 mt_local4 = get_interface_address(opts.interface, AF_INET)
 mt_local6 = get_interface_address(opts.interface, AF_INET6, SCP_LINKLOCAL)
 if not mt_local4 or not mt_local6:
-    lg.log(LOG_ERROR, "could not find valid addresses for interface: %s", opts.interface)
+    logger.error("could not find valid addresses for interface: %s", opts.interface)
     exit(1)
 mt_ifaddr4 = mt_local4.printaddress()
 mt_ifaddr6 = mt_local6.printaddress()
@@ -272,12 +272,12 @@ mt_source6 = mt_ifaddr6
 mt_who, mt_rem4, mt_rem6 = who_serves()
 mt_islocal = mt_rem4 == mt_ifaddr4
 if mt_who == 1:
-    lg.log(LOG_INFO, "running test as server")
+    logger.info("running test as server")
     run_server()
 elif mt_who == 0:
-    lg.log(LOG_INFO, "running test as client")
+    logger.info("running test as client")
     run_client()
 else:
-    lg.log(LOG_ERROR, "test not started. timed out")
+    logger.error("test not started. timed out")
 
 exit(0)

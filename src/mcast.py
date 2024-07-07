@@ -588,7 +588,7 @@ class McastSocket(socket):
             return 1
 
         if isjoin and self.joined >= IP_MAX_MEMBERSHIPS:
-            logger.error("exceeded max number of multicast group %ss", tag)
+            logger.error("exceeded max number of multicast groups %s", tag)
             return 1
 
         if PLATFORM == 'darwin':
