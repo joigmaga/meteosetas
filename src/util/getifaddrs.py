@@ -411,7 +411,7 @@ class NetworkInterface(object):
 
         return 0
 
-    def print_family_addresses(self, fam):
+    def print_family_addresses(self, fam) -> str:
         """ select and print addresses from the interface address based on address family """
 
         addrlist = []
@@ -419,26 +419,15 @@ class NetworkInterface(object):
         for addr in self.addresses:
             if addr.family != fam:
                 continue
-            addrout = str(addr)
-            ifc = addr.interface
-            if addr.family == AF_INET6:
-                addrout += " prefixlen %d" % addr.prefixlen 
-            elif addr.family == AF_INET:
-                addrout += " netmask %s" % str(addr.netmask)
-                if addr.broadcast and ifc.is_broadcast():
-                    addrout += " broadcast %s" % str(addr.broadcast)
-            if addr.family in (AF_INET, AF_INET6):
-                if addr.destination and ifc.is_pointopoint():
-                    addrout += " destination %s" % str(addr.destination)
-            addrlist.append(addrout)
+            addrlist.append(addr)
 
         if len(addrlist) == 0:
             return ""
 
         if len(addrlist) == 1:
-            return str(addrlist[0])
+            return addrlist[0].printfulladdress()
  
-        return str(tuple([str(_) for _ in addrlist]))
+        return str(tuple(addr.printfulladdress() for addr in addrlist))
 
     def __str__(self):
         """ interface printout """
@@ -523,11 +512,23 @@ class IPv4Address(InterfaceAddress):
 
         return 0
 
-    def printaddress(self):
+    def printaddress(self, *args):
         """ obtain a printable version of an IPv4 address """
 
         return inet_ntop(self.family, self.address)
         
+    def printfulladdress(self, *args):
+
+        addrout = self.printaddress()
+        if self.netmask:
+            addrout += " netmask %s" % self.netmask.printaddress()
+        if self.broadcast:
+            addrout += " broadcast %s" % self.broadcast.printaddress()
+        elif self.destination:
+            addrout += " destination %s" % self.destination.printaddress()
+
+        return addrout
+
     def __str__(self):
 
         return self.printaddress()
@@ -598,8 +599,8 @@ class IPv6Address(InterfaceAddress):
 
         return scp
          
-    def _printaddress(self, printzone=False):
-        """ hide the 'printzone' parameter in public method printaddress """
+    def printaddress(self, printzone=True):
+        """ obtain a printable version of a unicast IPv6 address with or without the 'zone id' """
 
         printable = inet_ntop(self.family, self.address)
         
@@ -610,14 +611,19 @@ class IPv6Address(InterfaceAddress):
 
         return printable
 
-    def printaddress(self):
-        """ obtain a printable version of a unicast IPv6 address with or without the 'zone id' """
+    def printfulladdress(self, printzone=True):
 
-        return self._printaddress(printzone=False)
+        addrout = self.printaddress(printzone)
+        addrout += " prefixlen %d" % self.prefixlen
+        if self.destination and self.interface.is_pointopoint():
+            addrout += " destination %s" % self.destination.printaddress()
+        if self.scope_id and self.scope not in (SCP_GLOBAL, SCP_INTLOCAL):
+            addrout += " scopeid 0x%x" % self.scope_id
+        return addrout
 
     def __str__(self):
 
-        return self._printaddress(printzone=True)
+        return self.printaddress()
 
 class LinkLayerAddress(InterfaceAddress):
     """ Link Layer address family class """
@@ -643,11 +649,15 @@ class LinkLayerAddress(InterfaceAddress):
 
         return "" if iszero else buff
 
-    def printaddress(self):
+    def printaddress(self, *args):
         """ obtain a printable version of the link layer address """
 
         return self.print_macaddress()
         
+    def printfulladdress(self, *args):
+
+        return self.printaddress()
+
     def __str__(self):
 
         return self.printaddress()
@@ -750,10 +760,10 @@ GIA_SCP_LINK   = SCP_LINKLOCAL      # link-local
 GIA_SCP_SITE   = SCP_SITELOCAL      # site-local
 GIA_SCP_GLOBAL = SCP_GLOBAL         # global
 
-def get_interface_names() -> list:
-    """ return a list of all the interface names available """
+def get_interface_names() -> tuple:
+    """ return a tuple of all the interface names available """
 
-    return [iface.name for iface in get_network_interfaces()]
+    return tuple([iface.name for iface in get_network_interfaces()])
 
 def get_interface(ifname: str|int) -> NetworkInterface:
     """ get the interface object for the interface name selected """
@@ -774,8 +784,8 @@ def get_interface(ifname: str|int) -> NetworkInterface:
 
 def get_interface_addresses(ifname: str|int,
                             fam:    int=GIA_AF_ALL,
-                            scope:  int=GIA_SCP_ALL) -> list:
-    """ return a list, possibly empty, of all the addresses for the families and scopes selected
+                            scope:  int=GIA_SCP_ALL) -> list[InterfaceAddress]:
+    """ return a list of the addresses for the families and scopes selected
         return None if there is no interface with such a name
         return a (possibly empty) list of addresses otherwise """
 
@@ -902,23 +912,25 @@ def find_interface_address(addr: str, fam: int=GIA_AF_INET, ifname: str=None) ->
 
     return None
 
-def print_interface_addresses(ifname: str,
-                              fam:    int=GIA_AF_ALL,
-                              scope:  int=GIA_SCP_ALL) -> list[str]:
+def print_interface_addresses(ifname:  str,
+                              fam:     int=GIA_AF_ALL,
+                              scope:   int=GIA_SCP_ALL,
+                              fullfmt: bool=True) -> tuple[str]:
     """ print the list of addresses configured in the interface for the address familiy
         and the address scope selected
     """
 
     addrlist = get_interface_addresses(ifname, fam, scope)
     if addrlist is None:
-        return ""
+        return ()
 
-    return [str(addr) for addr in addrlist]
+    return tuple([str(addr) for addr in addrlist])
 
-def print_interface_address(ifname: str,
-                            fam:    int=GIA_AF_LINK,
-                            scope:  int=GIA_SCP_ALL,
-                            zone:   bool=True) -> str:
+def print_interface_address(ifname:  str,
+                            fam:     int=GIA_AF_LINK,
+                            scope:   int=GIA_SCP_ALL,
+                            fullfmt: bool=True,
+                            zone:    bool=True) -> str:
     """ return a single address for the interface and family selected
         if no address family is selected, the link layer address is returned
         if the interface has multiple IPv6 addresses and no scope is selected,
@@ -930,9 +942,10 @@ def print_interface_address(ifname: str,
     if not addr:
         return ""
 
-    paddr = str(addr)
-    if (fam == GIA_AF_INET6 and not zone):
-        paddr = addr.printaddress()
+    if fullfmt:
+        paddr = addr.printfulladdress(zone)
+    else:
+        paddr = addr.printaddress(zone)
 
     return paddr
 
