@@ -826,7 +826,7 @@ def get_interface_address(ifname: str|int,
 
     return addrlist[0]
 
-def check_address(addr: str, fam: int, ifname: str) -> (bytes, int):
+def _check_address(addr: str, fam: int) -> (bytes, int):
     """ check that the input string is a valid representation of an interface address for
         the specified address family """
 
@@ -864,7 +864,7 @@ def find_interface_address(addr: str, fam: int=GIA_AF_INET, ifname: str=None) ->
     """ search for a given address. Lookup can be restricted to an interface and/or a family
         important: address scope is encoded in the address itself """
 
-    check, scope_id = check_address(addr, fam, ifname)
+    check, scope_id = _check_address(addr, fam)
 
     if not check:
         return None
