@@ -924,7 +924,10 @@ def print_interface_addresses(ifname:  str,
     if addrlist is None:
         return ()
 
-    return tuple([str(addr) for addr in addrlist])
+    if fullfmt:
+        return tuple([addr.printfulladdress() for addr in addrlist])
+
+    return tuple([addr.printaddress() for addr in addrlist])
 
 def print_interface_address(ifname:  str,
                             fam:     int=GIA_AF_LINK,
@@ -943,16 +946,16 @@ def print_interface_address(ifname:  str,
         return ""
 
     if fullfmt:
-        paddr = addr.printfulladdress(zone)
-    else:
-        paddr = addr.printaddress(zone)
+        return addr.printfulladdress(zone)
 
-    return paddr
+    return addr.printaddress(zone)
 
 __all__ = ["GIA_AF_ALL", "GIA_AF_LINK", "GIA_AF_INET", "GIA_AF_INET6",
-           "GIA_SCP_MIN", "GIA_SCP_ALL", "GIA_SCP_HOST", "GIA_SCP_LINK", "GIA_SCP_GLOBAL",
-           "get_interface_names", "get_interface", "get_network_interfaces",
-           "find_interface_address", "get_interface_address", "get_interface_addresses",
+           "GIA_SCP_ALL", "GIA_SCP_HOST", "GIA_SCP_LINK", "GIA_SCP_GLOBAL",
+           "get_network_interfaces",
+           "get_interface", "get_interface_names",
+           "find_interface_address",
+           "get_interface_address", "get_interface_addresses",
            "print_interface_address", "print_interface_addresses"]
 
 if __name__ == "__main__":
