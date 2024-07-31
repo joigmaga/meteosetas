@@ -6,12 +6,16 @@ from time import sleep
 from select import select
 from argparse import ArgumentParser
 
-from mcast import McastSocket, IPM_IP, IPM_IPV6, IPM_BOTH, AF_INET, AF_INET6, SCP_LINKLOCAL
-from util.getifaddrs import get_interface, get_interface_address
+from mcast import (McastSocket,
+                   IPM_IP, IPM_IPV6, IPM_BOTH,
+                   AF_INET, AF_INET6,)
+from util.address     import SCP_LINKLOCAL
+from util.getifaddrs  import get_interface, get_interface_address
 from util.custlogging import get_logger, ERROR, WARNING, INFO
 
 def who_serves():
-    """ decide who takes the role of either client or server before running the test """
+    """ decide who takes either client role or server
+        before running the test """
 
     ifaddr = mt_ifaddr4
     group  = "235.36.37.38"
@@ -68,7 +72,7 @@ def who_serves():
     who = who.decode('ascii')
     who,  _, _    = who.partition('&')
     rem4, _, rem6 = who.partition('|')
-    rem6 += "%" + opts.interface
+    #rem6 += "%" + opts.interface
 
     return role, rem4, rem6
 
@@ -122,7 +126,7 @@ def run_client():
 
         for msock in ready:
             buff, addr, port = msock.recvfrom()
-            logger.info("received message from %s (%d): %s", addr, port, buff)
+            logger.info("received message from %s (%s): %s", addr, port, buff)
 
     # multicast 
     #
@@ -146,7 +150,7 @@ def run_client():
 
         for msock in ready:
             buff, addr, port = msock.recvfrom()
-            logger.info("received response from %s (%d): %s", addr, port, buff)
+            logger.info("received response from %s (%s): %s", addr, port, buff)
 
     msock4.close()
     msock6.close()
@@ -205,7 +209,7 @@ def run_server():
             # read socket and reply unicast to client
             buff, addr, port = msock.recvfrom()
             _, lport = msock.getsockname()[:2]
-            logger.info("received message from %s for service (%d): %s",
+            logger.info("received message from %s for service (%s): %s",
                    addr, lport, buff)
             logger.info("replying to client")
             msock.sendto(msg, addr, port)

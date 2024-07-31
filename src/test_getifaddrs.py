@@ -12,7 +12,7 @@ from util.getifaddrs import (get_network_interfaces,
 if platform == 'darwin':
     int1 = "lo0"        # loopback
     int2 = "en0"        # ethernet
-    int3 = "en3"        # wifi
+    int3 = "en1"        # wifi
 
 # get_networkinterfaces()
 #
@@ -58,24 +58,24 @@ assert ifaddr1 not in ifaddrs1
 assert ifaddr2 not in ifaddrs2
 assert ifaddr3 not in ifaddrs3
 
-# find_interface_address()
-#
-addr1 = find_interface_address(int1)
-i1 = find_interface_address(int2, GIA_AF_INET)
-i2 = find_interface_address(int3, GIA_AF_INET6, GIA_SCP_LINK)
-assert i1 == i2
-
 # print_interface_addresses() and print_interface_address()
 #
 aa1 = print_interface_addresses(int1)
 aa2 = print_interface_addresses(int2)
 aa3 = print_interface_addresses(int3)
-xa3 = print_interface_addresses(int3, fullfmt=False)
-assert xa3 != aa3
+xa2 = print_interface_addresses(int3, fullfmt=True)
+assert xa2 != aa2
 
-a1 = print_interface_address(int3, GIA_AF_INET6, GIA_SCP_LINK, False)
-a2 = print_interface_address(int3, GIA_AF_INET6, GIA_SCP_LINK, False, True)
-a3 = print_interface_address(int3, GIA_AF_INET6, GIA_SCP_LINK, False, False)
+a1 = print_interface_address(int2, GIA_AF_INET6, GIA_SCP_LINK, False)
+a2 = print_interface_address(int2, GIA_AF_INET6, GIA_SCP_LINK, False, True)
+a3 = print_interface_address(int2, GIA_AF_INET6, GIA_SCP_LINK, False, False)
 assert a2 != a3
+
+# find_interface_address()
+#
+addr1 = find_interface_address(a1, GIA_AF_INET6)
+addr2 = find_interface_address(a2, GIA_AF_INET6)
+addr3 = find_interface_address(a3, GIA_AF_INET6, int2)
+assert str(addr1) == str(addr2) == str(addr3)
 
 print("All tests passed successfully")
