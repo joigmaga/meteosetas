@@ -229,26 +229,8 @@ class struct_group_source_req(Structure):
             ('gsr_group',        struct_sockaddr_storage),
             ('gsr_source',       struct_sockaddr_storage),]
 
-# utility functions
+#############################################################
 #
-def get_service_port(service):
-    """ obtain the service port, which can be encoded as a decimal number
-        or as a string """
-
-    try:
-        port = int(service)
-    except ValueError:
-        port = None
-    else:
-        return port
-
-    try:
-        port = getservbyname(service)
-    except OSError as ose:
-        logger.error("invalid service: %s, %s", service, ose.strerror)
-
-    return port
-
 class McastSocket(socket):
     """ a subclass of 'socket' that simplifies applications doing multicast
         and generic datagram exchange"""
@@ -276,9 +258,11 @@ class McastSocket(socket):
             self.v6only = False
 
         self.aux      = None
-        self.joined   = 0
         self.sent     = 0
         self.received = 0
+
+        self.joined        = 0
+        self.joined_groups = []
 
         self.state = ST_OPEN
 
@@ -561,19 +545,32 @@ class McastSocket(socket):
         """ join multicast group 'mgroup' at interface address 'iface'
             with optional SSM source 'source' """
 
-        res = self._join_leave(mgroup, iface, source, isjoin=True)
-        if res == 0:
-            self.joined += 1
+        if self._join_leave(mgroup, iface, source, isjoin=True) != 0:
+            return 1
 
-        return res
+        self.joined += 1
+        self.joined_groups.append((mgroup, iface, source))
+
+        return 0
 
     def leave(self, mgroup, iface=None, source=None):
         """ Leave multicast group 'mgroup' at interface 'ifaddr'
             with optional SSM source 'source' """
 
-        res = self._join_leave(mgroup, iface, source, isjoin=False)
-        if res == 0:
-            self.joined -= 1
+        if self._join_leave(mgroup, iface, source, isjoin=False) != 0:
+            return 1
+
+        self.joined -= 1
+        self.joined_groups.remove((mgroup, iface, source))
+
+        return 0
+
+    def leaveall(self):
+
+        res = 0
+        for mgroup, iface, source in self.joined_groups:
+            if self._join_leave(mgroup, iface, source, isjoin=False) != 0:
+                res = 1
 
         return res
 
@@ -702,19 +699,23 @@ def mcast_server(grouplist, port, interface):
     if isinstance(port, int):
         service = port
     elif isinstance(port, str):
-        service = getservbyname(port)
+        try:
+            service = getservbyname(port)
+        except (TypeError, OSError) as excp:
+            logger.error("gethostbyname: %s", str(excp))
 
     if not service:
         logger.error("error: Invalid port: %s", port)
         return 1
     
-    # check joining interface (if null, it must be explicitly set in grouplist)
+    # check default joining interface (socket bound to all interfaces)
+    # if null, it must be explicitly set in grouplist
     #
     ifindex = 0
     if interface:
         ifindex = get_interface_index(interface)
 
-    # build the per-family lists of multicast groups
+    # build per-family lists of multicast groups
     #
     for tupl in grouplist:
         if not isinstance(tupl, tuple or list):
@@ -777,17 +778,19 @@ def mcast_server(grouplist, port, interface):
     # group joining
     #
     if want6 and want4 and PLATFORM == 'darwin':
+        # This requires an extra socket for v4 joins
         for group, intf, source in v4groups[:]:
             if msock4.join(group, intf, source) != 0:
                 v4groups.remove((group, intf, source))
-    elif want6:
-        for group, intf, source in v6groups[:]:
-            if msock.join(group, intf, source) != 0:
-                v6groups.remove((group, intf, source))
-    elif want4:
-        for group, intf, source in v4groups[:]:
-            if msock.join(group, intf, source) != 0:
-                v4groups.remove((group, intf, source))
+    else:
+        if want6:
+            for group, intf, source in v6groups[:]:
+                if msock.join(group, intf, source) != 0:
+                    v6groups.remove((group, intf, source))
+        if want4:
+            for group, intf, source in v4groups[:]:
+                if msock.join(group, intf, source) != 0:
+                    v4groups.remove((group, intf, source))
 
     # init read generator
     #
@@ -813,15 +816,17 @@ def mcast_server_stop():
 
     # leave groups
     #
-    if want6:
-        for group, intf, source in v6groups:
-            sock6.leave(group, intf, source)
-        if want4 and PLATFORM == 'darwin':
-            for group, intf, source in v4groups: 
-                sock4.leave(group, intf, source)
-    elif want4:
-        for group, intf, source in v4groups:
-            sock4.leave(group, intf, source)
+    #if want6:
+    #    for group, intf, source in v6groups:
+    #        sock6.leave(group, intf, source)
+    #    if want4 and PLATFORM == 'darwin':
+    #        for group, intf, source in v4groups: 
+    #            sock4.leave(group, intf, source)
+    #elif want4:
+    #    for group, intf, source in v4groups:
+    #        sock4.leave(group, intf, source)
+    for sock in socketlist:
+        sock.leaveall()
 
     # close sockets
     #
