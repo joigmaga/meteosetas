@@ -10,8 +10,7 @@ from util.address import (SCP_LINKLOCAL,
                      struct_sockaddr, struct_sockaddr_in, struct_sockaddr_in6,
                      get_address,)
 from util.getifaddrs import (GETIFADDRS_ENCODING,
-                     get_network_interfaces, get_interface,
-                     struct_sockaddr_dl,)
+                     get_network_interfaces, get_interface,)
 from util.custlogging import get_logger, ERROR, WARNING
 logger = get_logger(__name__, WARNING)
 
@@ -25,6 +24,7 @@ IS_LINUX  = sys.platform.startswith('linux')
 if IS_DARWIN:
     from socket import AF_LINK
     AF_LOCAL_L2 = AF_LINK
+    from util.getifaddrs import struct_sockaddr_dl
 elif IS_LINUX:
     from socket import AF_PACKET
     AF_LOCAL_L2 = AF_PACKET
