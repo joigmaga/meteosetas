@@ -2,12 +2,12 @@
 
 from sys import platform
 from util.getifaddrs import (get_network_interfaces,
-                             get_interface, get_interface_names,
-                             get_interface_addresses, get_interface_address,
-                             find_interface_address,
-                             print_interface_addresses, print_interface_address,
-                             GIA_AF_ALL, GIA_AF_LINK, GIA_AF_INET, GIA_AF_INET6,
-                             GIA_SCP_ALL, GIA_SCP_HOST, GIA_SCP_LINK, GIA_SCP_GLOBAL)
+                  get_interface, get_interface_names,
+                  get_interface_addresses, get_interface_address,
+                  find_interface_address,
+                  print_interface_addresses, print_interface_address,
+                  GIA_AF_UNSPEC, GIA_AF_LINK, GIA_AF_INET, GIA_AF_INET6,
+                  GIA_SCP_ALL, GIA_SCP_HOST, GIA_SCP_LINK, GIA_SCP_GLOBAL)
 
 if platform == 'darwin':
     int1 = "lo0"        # loopback

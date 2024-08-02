@@ -23,6 +23,7 @@ from os import strerror
 from socket import (AF_UNSPEC, AF_UNIX, AF_INET, AF_INET6,
                     SOCK_DGRAM, SOCK_STREAM,)
 from util.address import (Address, IPv4Address, IPv6Address, LinkLayerAddress,
+                     SCP_INTLOCAL, SCP_LINKLOCAL, SCP_SITELOCAL, SCP_GLOBAL,
                      struct_sockaddr, struct_sockaddr_in, struct_sockaddr_in6,
                      get_address,)
 from util.custlogging import get_logger, ERROR, WARNING
@@ -48,9 +49,6 @@ elif IS_LINUX:
 # from sys/socket.h
 AF_LOCAL = AF_UNIX
 AF_MAX   = 42
-
-# all families match
-AF_LOCAL_ALL = AF_MAX
 
 from ctypes import (
     CDLL,
@@ -108,21 +106,14 @@ elif IS_LINUX:
 # IPv6 scope
 #
 SCP_MIN          = 0x00
-SCP_INTLOCAL     = 0x01
-SCP_LINKLOCAL    = 0x02
-SCP_REALMLOCAL   = 0x03
-SCP_ADMINLOCAL   = 0x04
-SCP_SITELOCAL    = 0x05
-SCP_ORGANIZATION = 0x08
-SCP_GLOBAL       = 0x0e
 SCP_ALL          = 0x10
 
 # address family mappings
 #
-familymap = { AF_LOCAL_ALL:   "all",
-              AF_LOCAL_L2:    "link",
-              AF_INET:        "inet",
-              AF_INET6:       "inet6",
+familymap = { AF_UNSPEC:   "all",
+              AF_LOCAL_L2: "link",
+              AF_INET:     "inet",
+              AF_INET6:    "inet6",
             }
 
 HEXDIGITS = "0123456789abcdef"
@@ -134,7 +125,7 @@ def family_match(fam, reqfam):
     """ return True if 'fam' matches the expected family
         or the latter is 'all families' """
 
-    return reqfam in (fam, AF_LOCAL_ALL)
+    return reqfam in (fam, AF_UNSPEC)
 
 def scope_match(scp, reqscp):
     """ return True if 'scp' matches the expected scope
@@ -568,7 +559,7 @@ def ifap_iter(ifap):
         ifa = ifa.ifa_next.contents
 
 def get_network_interfaces(ifname=None,
-                           reqfamily=AF_LOCAL_ALL,
+                           reqfamily=AF_UNSPEC,
                            reqscope=SCP_ALL):
     """ walk through all network interfaces gathering address information
         filters available for interface names, address families
@@ -637,7 +628,6 @@ def get_network_interfaces(ifname=None,
 # public constants and methods
 #
 
-GIA_AF_ALL     = AF_LOCAL_ALL
 GIA_AF_UNSPEC  = AF_UNSPEC
 GIA_AF_LINK    = AF_LOCAL_L2
 GIA_AF_INET    = AF_INET
@@ -694,7 +684,7 @@ def get_interface_index(iface: str|int,
     return ifindex
 
 def get_interface_addresses(ifname: str|int,
-                            fam:    int=GIA_AF_ALL,
+                            fam:    int=GIA_AF_UNSPEC,
                             scope:  int=GIA_SCP_ALL) -> list[Address]:
     """ return a list of addresses for the families and scopes selected
         return None if there is no interface with such a name
@@ -782,7 +772,7 @@ def find_interface_address(addr:   str,
     return None
 
 def print_interface_addresses(ifname:  str,
-                              fam:     int=GIA_AF_ALL,
+                              fam:     int=GIA_AF_UNSPEC,
                               scope:   int=GIA_SCP_ALL,
                               fullfmt: bool=False) -> list[str]:
     """ print the list of addresses configured in the interface
@@ -818,7 +808,7 @@ def print_interface_address(ifname:  str,
 
     return addr.printaddress(zone)
 
-__all__ = ["GIA_AF_ALL", "GIA_AF_LINK", "GIA_AF_INET", "GIA_AF_INET6",
+__all__ = ["GIA_AF_UNSPEC", "GIA_AF_LINK", "GIA_AF_INET", "GIA_AF_INET6",
            "GIA_SCP_ALL", "GIA_SCP_HOST", "GIA_SCP_LINK", "GIA_SCP_GLOBAL",
            "get_network_interfaces",
            "get_interface", "get_interface_names",

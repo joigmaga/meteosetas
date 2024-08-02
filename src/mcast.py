@@ -801,36 +801,8 @@ def mcast_server(grouplist, port, interface):
 def mcast_server_stop():
     """ leave multicast groups and close sockets """
 
-    want4 = len(v4groups) > 0
-    want6 = len(v6groups) > 0
-
-    sock6 = None
-    sock4 = None
-    for sock in socketlist:
-        if sock.family == AF_INET6:
-            sock6 = sock
-        elif sock.family == AF_INET:
-            sock4 = sock
-    if want4 and not sock4:
-        sock4 = sock6
-
-    # leave groups
-    #
-    #if want6:
-    #    for group, intf, source in v6groups:
-    #        sock6.leave(group, intf, source)
-    #    if want4 and PLATFORM == 'darwin':
-    #        for group, intf, source in v4groups: 
-    #            sock4.leave(group, intf, source)
-    #elif want4:
-    #    for group, intf, source in v4groups:
-    #        sock4.leave(group, intf, source)
     for sock in socketlist:
         sock.leaveall()
-
-    # close sockets
-    #
-    for sock in socketlist:
         sock.close()
 
     return 0

@@ -144,7 +144,8 @@ class IPv4Address(Address):
 
         super().__init__(address, AF_INET)
 
-        self.printable  = host
+        self.original  = host
+        self.printable = host
 
         # IPv4 mapped IPv6 address returned in a dual socket
         self.ipv4mapped = '::ffff:' + ("%08x" % int.from_bytes(self.in_addr,
@@ -241,6 +242,7 @@ class LinkLayerAddress(Address):
 
         super().__init__(address, AF_LOCAL_L2)
 
+        self.original  = host
         self.printable = host
 
 ##############################
