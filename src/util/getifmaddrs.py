@@ -599,6 +599,8 @@ if IS_LINUX:
             elif int(excl) > 0:
                 group.fmode = MODE_EXCLUDE
 
+        return 0
+
     def parse_source6_file(ifiter):
 
         with open(SOURCE6_FILE) as f:
@@ -634,6 +636,8 @@ if IS_LINUX:
                 group.fmode = MODE_INCLUDE
             elif int(excl) > 0:
                 group.fmode = MODE_EXCLUDE
+
+        return 0
 
     def print_multicast_groups():
 
