@@ -347,7 +347,7 @@ def get_address(
               "Specify family or use T_INADDR_ANY for IPv4, '::' for IPv6")
         else:
             address = get_ip_address(taddr, service, AF_UNSPEC, type, proto) 
-    elif family in AF_INET:
+    elif family == AF_INET:
         if not taddr:
             taddr = "0.0.0.0"
         address = get_ip_address(taddr, service, AF_INET, type, proto)
