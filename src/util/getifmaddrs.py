@@ -475,7 +475,7 @@ if IS_LINUX:
     IGMP_FILE    = "/proc/net/igmp"
     IGMP6_FILE   = "/proc/net/igmp6"
     SOURCE_FILE  = "/proc/net/mcfilter"
-    SOURCE_FILE6 = "/proc/net/mcfilter6"
+    SOURCE6_FILE = "/proc/net/mcfilter6"
 
     QUERIER_VALUES = ("unknown", "V1", "V2", "V3")
 
