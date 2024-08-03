@@ -600,8 +600,6 @@ if IS_LINUX:
             elif int(excl) > 0:
                 group.fmode = MODE_EXCLUDE
 
-            print("device:", iface, "group:", group, "sources:", group.sources)
-
         return 0
 
     def parse_source6_file(ifiter):
@@ -641,8 +639,6 @@ if IS_LINUX:
             elif int(excl) > 0:
                 group.fmode = MODE_EXCLUDE
 
-            print("device:", iface.name, "group:", group, "sources:", group.sources)
-
         return 0
 
     def print_multicast_groups():
@@ -670,7 +666,6 @@ if IS_LINUX:
 
         for iface in m:
             for group in iface.groups:
-                print("device:", iface, "group:", group, "sources:", group.sources)
                 if not group.sources:
                     continue
                 for source in group.sources:
