@@ -658,7 +658,10 @@ if IS_LINUX:
                 print("%-15s %-6s %-22s" % (iface.name,
                                            group.users, group.original))
 
-        print("")
+    def print_multicast_sources():
+
+        m = get_multicast_addresses()
+
         print("Sources")
         print("Interface       Group                  "
               "Source                 Incl  Excl")
@@ -675,11 +678,7 @@ if IS_LINUX:
                            (iface.name, group.original,
                             source.printable, source.include, source.exclude))
 
-    def print_multicast_interfaces():
-
-        pass
-
 if __name__ == "__main__":
     print_multicast_groups()
     print()
-    print_multicast_interfaces()
+    print_multicast_sources()
