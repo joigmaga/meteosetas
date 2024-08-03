@@ -631,7 +631,7 @@ if IS_LINUX:
                               grp, device)
                 return 1
 
-            source = IPv4Address(int(src, 16).to_bytes(4, 'big'))
+            source = IPv6Address(int(src, 16).to_bytes(16, 'big'))
             group.sources.append(source)
             source.include = int(incl)
             source.exclude = int(excl)
@@ -641,7 +641,7 @@ if IS_LINUX:
             elif int(excl) > 0:
                 group.fmode = MODE_EXCLUDE
 
-            print("device:", iface, "group:", group, "sources:", group.sources)
+            print("device:", iface.name, "group:", group, "sources:", group.sources)
 
         return 0
 
