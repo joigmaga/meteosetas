@@ -347,8 +347,14 @@ def get_address(
               "Specify family or use T_INADDR_ANY for IPv4, '::' for IPv6")
         else:
             address = get_ip_address(taddr, service, AF_UNSPEC, type, proto) 
-    elif family in (AF_INET, AF_INET6):
-        address = get_ip_address(taddr, service, family, type, proto)
+    elif family in AF_INET:
+        if not taddr:
+            taddr = "0.0.0.0"
+        address = get_ip_address(taddr, service, AF_INET, type, proto)
+    elif family == AF_INET6:
+        if not taddr:
+            taddr = "::"
+        address = get_ip_address(taddr, service, AF_INET6, type, proto)
     else:
         error_handler("Invalid address family: '%d'", family)
 
