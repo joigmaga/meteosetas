@@ -650,7 +650,7 @@ if IS_LINUX:
         for iface in m:
             for group in iface.groups:
                 print("%-15s %-6s %-22s" % (iface.name,
-                                           group.users, group.printable))
+                                           group.users, group.original))
 
         print("")
         print("Sources")
