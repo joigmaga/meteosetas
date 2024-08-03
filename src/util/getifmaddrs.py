@@ -584,6 +584,7 @@ if IS_LINUX:
             for g in iface.groups:
                 if grp == g.in_addr:
                     group = g
+                    break
             if group is None:
                 logger.error("could not find group %s in interface %s",
                               grp, device)
@@ -622,6 +623,7 @@ if IS_LINUX:
             for g in iface.groups:
                 if grp == g.in_addr:
                     group = g
+                    break
             if group is None:
                 logger.error("could not find group %s in interface %s",
                               grp, device)
@@ -663,7 +665,7 @@ if IS_LINUX:
             for group in iface.groups:
                 if not group.sources:
                     continue
-                for source in sources:
+                for source in group.sources:
                     print("%-15s %-22s %-22s %-5d %-5d" %
                            (iface.name, group.printable,
                             source.printable, source.include, source.exclude))
