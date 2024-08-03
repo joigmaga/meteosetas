@@ -496,7 +496,7 @@ if IS_LINUX:
             return None
         if parse_igmp6_file(ifiter) != 0:
             return None
-        if parse_source_file6(ifiter) != 0:
+        if parse_source6_file(ifiter) != 0:
             return None
 
         return ifiter
