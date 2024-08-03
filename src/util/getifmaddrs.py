@@ -649,7 +649,7 @@ if IS_LINUX:
 
         for iface in m:
             for group in iface.groups:
-                print("%-15s %-6 %-22s" % (iface.name,
+                print("%-15s %-6s %-22s" % (iface.name,
                                            group.users, group.printable))
 
         print("")
@@ -665,8 +665,8 @@ if IS_LINUX:
                     continue
                 for source in sources:
                     print("%-15s %-22s %-22s %-5d %-5d" %
-                               (iface.name, group.printable,
-                                source, source.include, source.exclude))
+                           (iface.name, group.printable,
+                            source.printable, source.include, source.exclude))
 
     def print_multicast_interfaces():
 
