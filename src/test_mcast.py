@@ -28,7 +28,7 @@ def who_serves():
     msg3 = b'I serve'
 
     msock = McastSocket(IPM_IP)
-    msock.bind("", port, reuseport=1)
+    msock.bind("0.0.0.0", port, reuseport=1)
     msock.join(group, opts.interface)
     msock.set_sendoptions(fwdif=ifaddr, loop=1, ttl=1)
 
@@ -166,11 +166,11 @@ def run_server():
     if PLATFORM == 'darwin':
         msock42 = McastSocket(IPM_IP)
 
-    msock4.bind("",    mt_port4)
+    msock4.bind("0.0.0.0",    mt_port4)
     msock6.bind("::",  mt_port6)
     if PLATFORM == 'darwin':
         msock46.bind("::", mt_port46, reuseport=1)
-        msock42.bind("",   mt_port46, reuseport=1)
+        msock42.bind("0.0.0.0",   mt_port46, reuseport=1)
     else:
         msock46.bind("::", mt_port46)
 
