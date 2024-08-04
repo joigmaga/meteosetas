@@ -791,11 +791,9 @@ def mcast_server(grouplist, port, interface):
                 if msock.join(group, intf, source) != 0:
                     v4groups.remove((group, intf, source))
 
-    for buff, addr, port in mcast_read(socketlist):
-        if not buff:
-            mcast_server_stop(socketlist)
-            break
-        print("msg:", buff, "addr:", addr, "port:", port)
+    do_something(socketlist)
+
+    mcast_server_stop(socketlist)
 
     return 0
 
@@ -809,3 +807,16 @@ def mcast_server_stop(socketlist):
         sock.close()
 
     return 0
+
+def do_something(socketlist):
+
+    for buff, addr, port in mcast_read(socketlist):
+
+        if not buff:
+            print("terminated")
+            break
+
+        print("msg:", buff, "addr:", addr, "port:", port)
+
+    return 0
+
