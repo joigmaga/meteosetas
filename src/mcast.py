@@ -499,7 +499,7 @@ class McastSocket(socket):
 
         return 0
 
-    def recvfrom(self):
+    def recvfrom(self, encoding=None):
         """ receive datagrams from socket """
 
         if self.state == ST_CLOSED:
@@ -515,9 +515,16 @@ class McastSocket(socket):
             if addrobj.map4:             # is a mapped IPv4 address
                 host = addrobj.map4      # return plain IPv4 address instead
 
+        if encoding:
+            try:
+                buff = buff.decode(encoding=encoding)
+            except ValueError:
+                logger.error("Invalid codec '%s' for decoding bytes buffer",
+                              encoding)
+
         return buff, host, service
 
-    def sendto(self, buffer, mgroup, service):
+    def sendto(self, buffer, mgroup, service, encoding='utf-8'):
         """ send datagram to a remote mgroup/service combination """
 
         if self.state == ST_CLOSED:
@@ -529,6 +536,14 @@ class McastSocket(socket):
         if not address:
             logger.error("Invalid multicast group address: %s", mgroup)
             return 0
+
+        if isinstance(buffer, str):
+            try:
+                buffer = buffer.encode(encoding=encoding)
+            except ValueError:
+                logger.error("Invalid encoding '%s' for string '%s'",
+                              encoding, buffer)
+                return 0
 
         try:
             sent = super().sendto(buffer, address)
@@ -652,42 +667,19 @@ class McastSocket(socket):
 ##########
 # utility functions
 #
-socketlist = []
-v4groups   = []
-v6groups   = []
 
-# These globals are defined here and set by 'mcast_read_init()'
-#
-mcastread       = None
-mcast_read_stop = None
-
-def mcast_read_generator():
-    """ a generator function to iteratively read from sockets """
+def mcast_read(socketlist, stop=False):
 
     while True:
+        if stop:
+            return
         try:
             ready, _, _ = select(socketlist, [], [])
         except KeyboardInterrupt:
             break
         for sock in ready:
             yield sock.recvfrom()
-
-def mcast_read_init():
-    """ initialization of the mcastread iterable """
-
-    global mcastread, mcast_read_stop
-
-    mcastread = mcast_read_generator()
-    mcast_read_stop = mcastread.close
-
-def mcast_read():
-    """ perform one read """
-
-    try:
-        return next(mcastread)
-    except StopIteration:
-        return None, None, None
-
+    
 def mcast_server(grouplist, port, interface):
     """ initialize multicast server. Do parameter checking,
         create sockets and join groups
@@ -696,6 +688,10 @@ def mcast_server(grouplist, port, interface):
         port: the server port
         interface: the default interface for joins (can be overriden in tuple)
     """
+
+    socketlist = []
+    v4groups   = []
+    v6groups   = []
 
     # check port
     #
@@ -706,7 +702,7 @@ def mcast_server(grouplist, port, interface):
         try:
             service = getservbyname(port)
         except (TypeError, OSError) as excp:
-            logger.error("gethostbyname: %s", str(excp))
+            logger.error("getservbyname: %s", str(excp))
 
     if not service:
         logger.error("error: Invalid port: %s", port)
@@ -727,7 +723,6 @@ def mcast_server(grouplist, port, interface):
                          "Must be 'tuple' or 'list'")
             return 1
 
-        group  = None
         ifaddr = ifindex
         source = None
 
@@ -767,7 +762,7 @@ def mcast_server(grouplist, port, interface):
             msock4 = McastSocket(IPM_IP)
             socketlist.append(msock4)
             msock.bind("::", service, reuseport=1)
-            msock4.bind("",  service, reuseport=1)
+            msock4.bind("0.0.0.0",  service, reuseport=1)
         else:
             msock.bind("::", service)
     elif want6:
@@ -777,7 +772,7 @@ def mcast_server(grouplist, port, interface):
     elif want4:
         msock = McastSocket(IPM_IP)
         socketlist.append(msock)
-        msock.bind("", service)
+        msock.bind("0.0.0.0", service)
 
     # group joining
     #
@@ -796,14 +791,18 @@ def mcast_server(grouplist, port, interface):
                 if msock.join(group, intf, source) != 0:
                     v4groups.remove((group, intf, source))
 
-    # init read generator
-    #
-    mcast_read_init()
+    for buff, addr, port in mcast_read(socketlist):
+        if not buff:
+            mcast_server_stop(socketlist)
+            break
+        print("msg:", buff, "addr:", addr, "port:", port)
 
     return 0
 
-def mcast_server_stop():
+def mcast_server_stop(socketlist):
     """ leave multicast groups and close sockets """
+
+    mcast_read(socketlist, stop=True)
 
     for sock in socketlist:
         sock.leaveall()

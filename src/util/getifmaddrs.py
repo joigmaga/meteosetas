@@ -424,7 +424,7 @@ if IS_DARWIN:
         print()
         print_multicast_groups_family(AF_INET6, "IPv6")
 
-    def print_multicast_interfaces():
+    def print_multicast_sources():
 
         for iface in get_multicast_addresses():
             if not iface.groups:
