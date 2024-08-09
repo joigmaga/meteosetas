@@ -7,7 +7,8 @@ from socket import (AF_UNSPEC, AF_INET, AF_INET6, SOCK_STREAM, SOCK_DGRAM,
                     AI_NUMERICSERV, NI_NUMERICHOST, NI_NUMERICSERV,
                     getaddrinfo, getnameinfo, inet_ntop, inet_pton,
                     gaierror,)
-from ctypes import Structure, c_byte, c_ushort, c_uint8, c_uint16, c_uint32    
+from ctypes import (Structure, c_char, c_byte, c_ushort,
+                               c_uint8, c_uint16, c_uint32, c_int64,)
 
 # local imports
 from util.custlogging import get_logger, ERROR, WARNING
@@ -104,6 +105,22 @@ class struct_sockaddr_in6(Structure):
             ('sin6_addr',     c_byte * 16),
             ('sin6_scope_id', c_uint32)]
 
+#            ('ss_pad',    c_uint8 * 126),]
+class struct_sockaddr_storage(Structure):
+    if IS_DARWIN:
+        _fields_ = [
+            ('ss_len',    c_uint8),
+            ('ss_family', c_uint8),
+            ('ss_pad1',   c_uint8 * 6),
+            ('ss_align',  c_int64),
+            ('ss_pad2',   c_uint8 * 112),]
+    elif IS_LINUX:
+        _fields_ = [
+            ('ss_family', c_uint16),
+            ('ss_pad1',   c_char * 6),
+            ('ss_align',  c_int64),
+            ('ss_pad2',   c_char * 112),]
+            
 ####################################
 
 def error_handler(fmt, *args):
