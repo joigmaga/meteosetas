@@ -199,7 +199,6 @@ else:
 #
 # from netinet/in.h
 #
-#            ('gr_pad',           c_uint32),
 class struct_group_req(Structure):
     if PLATFORM == 'darwin':
         _pack_   = 4
@@ -207,9 +206,9 @@ class struct_group_req(Structure):
             ('gr_interface',     c_uint32),
             ('gr_group',         struct_sockaddr_storage),]
     elif PLATFORM.startswith('linux'):
-        _pack_   = 4
         _fields_ = [
             ('gr_interface',     c_uint32),
+            ('gr_pad',           c_uint32),
             ('gr_group',         struct_sockaddr_storage),]
 
 class struct_group_source_req(Structure):
@@ -220,9 +219,9 @@ class struct_group_source_req(Structure):
             ('gsr_group',        struct_sockaddr_storage),
             ('gsr_source',       struct_sockaddr_storage),]
     elif PLATFORM.startswith('linux'):
-        _pack_   = 4
         _fields_ = [
             ('gsr_interface',    c_uint32),
+            ('gr_pad',           c_uint32),
             ('gsr_group',        struct_sockaddr_storage),
             ('gsr_source',       struct_sockaddr_storage),]
 
