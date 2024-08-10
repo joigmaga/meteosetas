@@ -69,6 +69,9 @@ def who_serves():
     msock.close()
 
     role = 1 if iserve else 0 if iclient else -1
+    if role == -1:
+        return role, "", ""
+
     who = who.decode('ascii')
     who,  _, _    = who.partition('&')
     rem4, _, rem6 = who.partition('|')

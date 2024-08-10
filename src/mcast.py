@@ -126,13 +126,15 @@ from socket import (socket, inet_pton, htons,
                 SOL_SOCKET, SO_REUSEADDR, SO_REUSEPORT,)
 from select import select
 from ctypes import (Structure, pointer, POINTER, cast, sizeof,
-                    c_byte, c_ushort, c_uint8, c_uint16, c_uint32)
+                    create_string_buffer,
+                    c_byte, c_ushort, c_int, c_uint8, c_uint16, c_uint32)
 
 # local imports
 from util.custlogging import get_logger, ERROR, WARNING
 from util.address import (SCP_INTLOCAL, SCP_LINKLOCAL, SCP_REALMLOCAL, 
                           SCP_ADMINLOCAL, SCP_SITELOCAL, SCP_ORGANIZATION,
                           SCP_GLOBAL,
+                          struct_in_addr,
                           struct_sockaddr, struct_sockaddr_storage,
                           struct_sockaddr_in, struct_sockaddr_in6,
                           IPv4Address, IPv6Address, LinkLayerAddress,
@@ -199,6 +201,10 @@ else:
 #
 # from netinet/in.h
 #
+# For some strange reason, gr_interface field in group*_req structures
+# needs to occupy 64 bits instead of 32 in the Linux platform
+#
+#            ('gr_pad',           c_uint32),
 class struct_group_req(Structure):
     if PLATFORM == 'darwin':
         _pack_   = 4
@@ -206,11 +212,12 @@ class struct_group_req(Structure):
             ('gr_interface',     c_uint32),
             ('gr_group',         struct_sockaddr_storage),]
     elif PLATFORM.startswith('linux'):
+        _pack_   = 4
         _fields_ = [
             ('gr_interface',     c_uint32),
-            ('gr_pad',           c_uint32),
             ('gr_group',         struct_sockaddr_storage),]
 
+#            ('gr_pad',           c_uint32),
 class struct_group_source_req(Structure):
     if PLATFORM == 'darwin':
         _pack_   = 4
@@ -219,45 +226,23 @@ class struct_group_source_req(Structure):
             ('gsr_group',        struct_sockaddr_storage),
             ('gsr_source',       struct_sockaddr_storage),]
     elif PLATFORM.startswith('linux'):
+        _pack_   = 4
         _fields_ = [
             ('gsr_interface',    c_uint32),
-            ('gr_pad',           c_uint32),
             ('gsr_group',        struct_sockaddr_storage),
             ('gsr_source',       struct_sockaddr_storage),]
 
+class struct_ip_mreqn(Structure):
+        _fields_ = [
+            ('imr_multiaddr',    struct_in_addr),
+            ('imr_address',      struct_in_addr),
+            ('imr_ifindex',      c_int),]
+   
 #############################################################
 #
 class McastSocket(socket):
     """ a subclass of 'socket' that simplifies applications doing multicast
         and generic datagram exchange"""
-
-    default_forwarding_interface = 0
-
-    @classmethod
-    def get_def_forwint(cls):
-
-        return __class__.default_forwarding_interface
-
-    @classmethod
-    def set_def_forwint(cls, value):
-
-        oldval = __class__.default_forwarding_interface
-        __class__.default_forwarding_interface = value
-
-        return oldval
-
-    def get_forwint(self):
-        """ this is the current value for this msocket """
-
-        return self.forwint
-
-    def set_forwint(self, value):
-        """ this sets the forwarding interface only for this msocket """
-
-        oldvalue = self.fordwint
-        self.forwint = value
-
-        return oldvalue
 
     def __init__(self, ipmode=IPM_BOTH, fileno=None):
 
@@ -287,8 +272,6 @@ class McastSocket(socket):
 
         self.joined        = 0
         self.joined_groups = []
-
-        self.forwint = self.get_def_forwint()
 
         self.state   = ST_OPEN
 
@@ -371,7 +354,6 @@ class McastSocket(socket):
             sin6.sin6_addr[:]  = addrobj.in_addr
             sin6.sin6_scope_id = 0
 
-        print("len:", len(bytes(ss)), "sockaddr_storage:", bytes(ss))
         return ss
 
     def _get_optvalue(self, mgroup, iface, source):
@@ -387,14 +369,12 @@ class McastSocket(socket):
             return None
 
         groupaddr = self._build_sockaddr(mgroup, check=CHK_MULTICAST)
-        print("len:", len(bytes(groupaddr)), "groupaddr:", bytes(groupaddr))
         if not groupaddr:
             logger.error("Invalid multicast group address: %s", mgroup)
             return None
 
         if source:
             sourceaddr = self._build_sockaddr(source, check=CHK_UNICAST)
-            print("len:", len(bytes(sourceaddr)), "sourceaddr:", bytes(sourceaddr))
             if not sourceaddr:
                 logger.error("Invalid unicast source address: %s", source)
                 return None
@@ -407,7 +387,6 @@ class McastSocket(socket):
             grp.gr_interface = ifindex
             grp.gr_group     = groupaddr
 
-        print("len:", len(bytes(grp)), "grp:", bytes(grp))
         return grp
 
     def _join_leave(self, mgroup, iface, source, isjoin=True):
@@ -456,7 +435,6 @@ class McastSocket(socket):
         try:
             # this is the actual IGMP join/leave
             #
-            print("proto:", proto, "option:", option, "len:", len(bytes(value)), "val:", bytes(value))
             self.setsockopt(proto, option, bytes(value))
         except OSError as ose:
             logger.error("Multicast %s group error (%d): %s",
@@ -641,6 +619,30 @@ class McastSocket(socket):
 
         return 0
 
+    def setfwdint(self, fwdint):
+
+        if self.family == AF_INET:
+            mreq = struct_ip_mreqn()
+            mreq.imr_ifindex = fwdint
+            self.setsockopt(IPPROTO_IP, IP_MULTICAST_IF, bytes(mreq))
+
+        elif self.family == AF_INET6:
+            self.setsockopt(IPPROTO_IPV6, IPV6_MULTICAST_IF, fwdint)
+
+    def getfwdint(self):
+
+        if self.family == AF_INET:
+            bytesval = self.getsockopt(IPPROTO_IP, IP_MULTICAST_IF,
+                                       sizeof(struct_ip_mreqn)) 
+            buff = create_string_buffer(bytesval, len(bytesval))
+            mreq = cast(buff, POINTER(struct_ip_mreqn)).contents
+
+            return mreq.imr_ifindex
+
+        elif self.family == AF_INET6:
+
+            return self.getsockopt(IPPROTO_IPV6, IPV6_MULTICAST_IF)
+
     def set_sendoptions(self, fwdif=None, loop=-1, ttl=-1, prec=-1):
         """ set various options for sending multicast datagrams
             options include output interface, ttl, loopback reception
@@ -656,39 +658,24 @@ class McastSocket(socket):
             opt_ttl  = IP_MULTICAST_TTL
             opt_mif  = IP_MULTICAST_IF
             opt_tos  = IP_TOS
-            # if fwdif is an interface address it must match the socket family
-            addrobj = None
-            forwint = self.get_forwint()
-            if fwdif is not None:
-                addrobj  = get_address(fwdif, family=AF_INET)
-            elif forwint > 0:
-                addrobj = get_interface_address(forwint, AF_INET)
-            if not addrobj:
-                logger.error("Invalid forwarding interface address: %s", fwdif)
-                return None
-            forwint = addrobj.in_addr
         elif self.family == AF_INET6:
             proto    = IPPROTO_IPV6
             opt_loop = IPV6_MULTICAST_LOOP
             opt_ttl  = IPV6_MULTICAST_HOPS
             opt_mif  = IPV6_MULTICAST_IF
             opt_tos  = IPV6_TCLASS
-            forwint = 0
-            if fwdif:
-                forwint = get_interface_index(fwdif, AF_INET6)
-            elif self.forwint > 0:
-                forwint = self.get_forwint()
-            if forwint == 0:
-                logger.error("Invalid forwarding interface: %s", fwdif)
-                return None
+
+        fwdint = 0
+        if fwdif:
+            fwdint = get_interface_index(fwdif, self.family)
 
         try:
             if loop in (0, 1) and loop != self.getsockopt(proto, opt_loop):
                 self.setsockopt(proto, opt_loop, loop)
             if 0 < ttl < 256 and ttl != self.getsockopt(proto, opt_ttl):
                 self.setsockopt(proto, opt_ttl,  ttl)
-            if forwint and forwint != self.getsockopt(proto, opt_mif):
-                self.setsockopt(proto, opt_mif,  forwint)
+            if fwdint != self.getfwdint():
+                self.setfwdint(fwdint)
             if prec > 0 and prec != self.getsockopt(proto, opt_tos):
                 self.setsockopt(proto, opt_tos,  (prec & 0x07) << 5)
         except OSError as ose:
@@ -702,7 +689,9 @@ class McastSocket(socket):
 # utility functions
 #
 
-def mcast_read(socketlist, stop=False):
+socketlist = []
+
+def mcast_read(stop=False):
 
     while True:
         if stop:
@@ -714,10 +703,10 @@ def mcast_read(socketlist, stop=False):
         for sock in ready:
             yield sock.recvfrom()
     
-def mcast_server_stop(socketlist):
+def mcast_server_stop():
     """ leave multicast groups and close sockets """
 
-    mcast_read(socketlist, stop=True)
+    mcast_read(stop=True)
 
     for sock in socketlist:
         sock.leaveall()
@@ -725,9 +714,9 @@ def mcast_server_stop(socketlist):
 
     return 0
 
-def do_something(socketlist):
+def do_something():
 
-    for buff, addr, port in mcast_read(socketlist):
+    for buff, addr, port in mcast_read():
 
         if not buff:
             print("terminated")
@@ -746,7 +735,6 @@ def mcast_server(grouplist, port, interface, task=do_something):
         interface: the default interface for joins (can be overriden in tuple)
     """
 
-    socketlist = []
     v4groups   = []
     v6groups   = []
 
@@ -819,7 +807,7 @@ def mcast_server(grouplist, port, interface, task=do_something):
             msock4 = McastSocket(IPM_IP)
             socketlist.append(msock4)
             msock.bind("::", service, reuseport=1)
-            msock4.bind("0.0.0.0",  service, reuseport=1)
+            msock4.bind("0.0.0.0", service, reuseport=1)
         else:
             msock.bind("::", service)
     elif want6:
@@ -848,9 +836,9 @@ def mcast_server(grouplist, port, interface, task=do_something):
                 if msock.join(group, intf, source) != 0:
                     v4groups.remove((group, intf, source))
 
-    task(socketlist)
+    task()
 
-    mcast_server_stop(socketlist)
+    mcast_server_stop()
 
     return 0
 
