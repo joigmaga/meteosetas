@@ -201,36 +201,26 @@ else:
 #
 # from netinet/in.h
 #
-# For some strange reason, gr_interface field in group*_req structures
-# needs to occupy 64 bits instead of 32 in the Linux platform
+# The following structures have different alignment requierements in MacOS
+# and Linux
 #
-#            ('gr_pad',           c_uint32),
-class struct_group_req(Structure):
-    if PLATFORM == 'darwin':
-        _pack_   = 4
-        _fields_ = [
-            ('gr_interface',     c_uint32),
-            ('gr_group',         struct_sockaddr_storage),]
-    elif PLATFORM.startswith('linux'):
-        _pack_   = 4
-        _fields_ = [
-            ('gr_interface',     c_uint32),
-            ('gr_group',         struct_sockaddr_storage),]
+if PLATFORM == 'darwin':
+    align = 4
+elif PLATFORM.startswith('linux'):
+    align = 8
 
-#            ('gr_pad',           c_uint32),
+class struct_group_req(Structure):
+    _pack_   = align
+    _fields_ = [
+        ('gr_interface',     c_uint32),
+        ('gr_group',         struct_sockaddr_storage),]
+
 class struct_group_source_req(Structure):
-    if PLATFORM == 'darwin':
-        _pack_   = 4
-        _fields_ = [
-            ('gsr_interface',    c_uint32),
-            ('gsr_group',        struct_sockaddr_storage),
-            ('gsr_source',       struct_sockaddr_storage),]
-    elif PLATFORM.startswith('linux'):
-        _pack_   = 4
-        _fields_ = [
-            ('gsr_interface',    c_uint32),
-            ('gsr_group',        struct_sockaddr_storage),
-            ('gsr_source',       struct_sockaddr_storage),]
+    _pack_   = align
+    _fields_ = [
+        ('gsr_interface',    c_uint32),
+        ('gsr_group',        struct_sockaddr_storage),
+        ('gsr_source',       struct_sockaddr_storage),]
 
 class struct_ip_mreqn(Structure):
         _fields_ = [
