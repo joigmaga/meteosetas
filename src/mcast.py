@@ -298,9 +298,17 @@ class McastSocket(socket):
 
         return maddr.sockaddr
 
-    def _get_interface_sockaddr(self, ifaddr, service):
+    def _get_interface_sockaddr(self, iface, service):
         """ obtain the sockaddr structure parameter for an interface address
             used in bind() """
+
+        ifaddr = iface
+
+        if get_interface_index(iface) > 0:
+            addr = get_interface_address(iface, self.family)
+            if not addr:
+                return 1
+            ifaddr = addr.original
 
         # interface address family should match socket's
         addrobj = get_address(ifaddr, service, self.family, SOCK_DGRAM)
@@ -350,10 +358,12 @@ class McastSocket(socket):
         """ build an structure group_req or group_source_req
             if source address is present """
 
-        ifindex = get_interface_index(iface)
+        ifindex = 0
+        if iface:
+            ifindex = get_interface_index(iface)
 
         # iface = None, "" or 0 are an indication to the kernel
-        # to select an interface using routing information
+        # to select a joining interface using routing information
         if iface and (ifindex == 0):
             logger.error("Invalid interface name or address: %s", iface)
             return None
@@ -436,17 +446,17 @@ class McastSocket(socket):
 #############
 # public
 #
-    def bind(self, ifaddr, service, reuseport=0):
+    def bind(self, iface, service, reuseport=0):
         """ local interface to bind() """
 
         if self.state == ST_CLOSED:
             logger.error("cannot bind socket to address. Socket is closed")
             return 1
 
-        address = self._get_interface_sockaddr(ifaddr, service)
+        address = self._get_interface_sockaddr(iface, service)
 
         if not address:
-            logger.error("Invalid interface name or address: %s", ifaddr)
+            logger.error("Invalid interface name, index or address: %s", iface)
             return 1
 
         # if binding to a non zero port set to reuse address and, optionally,
@@ -568,7 +578,7 @@ class McastSocket(socket):
         return 0
 
     def leave(self, mgroup, iface=None, source=None):
-        """ Leave multicast group 'mgroup' at interface 'ifaddr'
+        """ Leave multicast group 'mgroup' at interface 'iface'
             with optional SSM source 'source' """
 
         if self._join_leave(mgroup, iface, source, isjoin=False) != 0:
@@ -657,7 +667,7 @@ class McastSocket(socket):
 
         fwdint = 0
         if fwdif:
-            fwdint = get_interface_index(fwdif, self.family)
+            fwdint = get_interface_index(fwdif)
 
         try:
             if loop in (0, 1) and loop != self.getsockopt(proto, opt_loop):
