@@ -23,6 +23,9 @@ HEXDIGITS = "0123456789abcdef"
 
 # Text representation of INADDR_ANY and UNSPECIFIED addresses
 #
+INADDR_ANY  = bytes(4)
+INADDR6_ANY = bytes(16)
+
 T_INADDR_ANY  = "0.0.0.0"
 T_INADDR6_ANY = "::"
 
@@ -58,6 +61,10 @@ logger = get_logger(__name__, WARNING)
 class struct_in_addr(Structure):
     _fields_ = [
         ('s_addr',        c_uint32),]
+
+class struct_in6_addr(Structure):
+    _fields_ = [
+        ('s6_addr',       c_uint8 * 16),]
 
 # generic sockaddr structure
 #
@@ -123,19 +130,6 @@ class struct_sockaddr_storage(Structure):
             
 ####################################
 
-def error_handler(fmt, *args):
-    """ handler for errors. Use standard logging and custom exceptions """
-
-    errmsg = fmt % (args)
-
-    logger.error(errmsg)
-    raise AddressError(errmsg)
-
-class AddressError(Exception):
-    """ A custom exception for the Adress module """
-
-    pass
-
 class Address:
     """ A base class from which all types of addresses are derived """
 
@@ -188,13 +182,8 @@ class IPv6Address(Address):
 
         # the task of whether the '%zone' must be appended to the
         # numeric address or not is fully delegated to Python
-        try:
-            fullhost, _ = getnameinfo((host, 0, 0, scope_id),
-                                      NI_NUMERICHOST|NI_NUMERICSERV)
-        except ValueError as ve:
-            error_handler("Invalid address '%s': %s", host, str(ve))
-        except OSError:
-            error_handler("Invalid sockaddr '%s'", sockaddr)
+        fullhost, _ = getnameinfo((host, 0, 0, scope_id),
+                                   NI_NUMERICHOST|NI_NUMERICSERV)
 
         super().__init__(address, AF_INET6)
 
@@ -277,7 +266,8 @@ def check_mac_address(taddr: str) -> bytes:
     try:
         baddr = int(mac, 16).to_bytes(6, 'big')
     except (ValueError, OverflowError) as excp:
-        error_handler("Invalid MAC address '%s': %s", taddr, str(excp))
+        logger.error("Invalid MAC address '%s': %s", taddr, str(excp))
+        baddr = None
 
     return baddr
 
@@ -292,14 +282,15 @@ def check_ip_address(taddr:   str,
     if family == AF_UNSPEC:
         flags = AI_PASSIVE|AI_NUMERICHOST
 
-    excp = None
+    addrlist = []
+
     try:
         addrlist = getaddrinfo(taddr, service,
                                family=family, type=type, flags=flags)
     except (ValueError, TypeError) as excp:
-        error_handler("Invalid type: '%s'", str(excp))
+        logger.error("Invalid type: '%s'", str(excp))
     except gaierror:
-        error_handler("Invalid IP address '%s'", taddr)
+        logger.error("Invalid IP address '%s'", taddr)
 
     return addrlist
 
@@ -356,11 +347,13 @@ def get_address(
           proto:   int=0) -> LinkLayerAddress|IPv4Address|IPv6Address:
     """ main entry point to the address factory """
 
+    address = None
+
     if family == AF_LOCAL_L2:
         address = get_linklayer_address(taddr)
     elif family == AF_UNSPEC:
         if not taddr:
-            error_handler("Ambiguous INADDR_ANY address without family. "
+            logger.error("Ambiguous INADDR_ANY address without family. "
               "Specify family or use T_INADDR_ANY for IPv4, '::' for IPv6")
         else:
             address = get_ip_address(taddr, service, AF_UNSPEC, type, proto) 
@@ -373,7 +366,7 @@ def get_address(
             taddr = "::"
         address = get_ip_address(taddr, service, AF_INET6, type, proto)
     else:
-        error_handler("Invalid address family: '%d'", family)
+        logger.error("Invalid address family: '%d'", family)
 
     return address 
 

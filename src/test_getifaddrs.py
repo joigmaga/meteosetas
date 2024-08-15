@@ -12,7 +12,7 @@ from util.getifaddrs import (get_network_interfaces,
 if platform == 'darwin':
     int1 = "lo0"        # loopback
     int2 = "en0"        # ethernet
-    int3 = "en1"        # wifi
+    int3 = "en2"        # wifi
 
 # get_networkinterfaces()
 #

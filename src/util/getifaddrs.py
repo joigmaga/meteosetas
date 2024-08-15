@@ -20,8 +20,8 @@
 import sys
 import os
 from os import strerror
-from socket import (AF_UNSPEC, AF_UNIX, AF_INET, AF_INET6,
-                    SOCK_DGRAM, SOCK_STREAM,)
+
+from socket import AF_UNSPEC, AF_UNIX, AF_INET, AF_INET6, SOCK_DGRAM
 from util.address import (Address, IPv4Address, IPv6Address, LinkLayerAddress,
                      SCP_INTLOCAL, SCP_LINKLOCAL, SCP_SITELOCAL, SCP_GLOBAL,
                      struct_sockaddr, struct_sockaddr_in, struct_sockaddr_in6,
@@ -158,9 +158,9 @@ def revmap(dmap, val):
                if val in dmap.values() else None)
 
 #
-# Assume 'one-byte char per byte' encoding for interface names
+# Assume ascii encoding for interface names
 #
-GETIFADDRS_ENCODING = 'ISO-8859-15'
+GETIFADDRS_ENCODING = 'ascii'
 
 # interface name max size for structure ifreq and sizeof(struct ifreq)
 #
@@ -648,8 +648,11 @@ def get_interface_names(ifiter=None) -> tuple:
 
     return tuple([iface.name for iface in ifiter])
 
-def get_interface(ifname: str|int, ifiter=None) -> NetworkInterface:
-    """ get the interface object for the interface name selected """
+def get_interface_by_id(ifname: str|int, ifiter=None) -> NetworkInterface:
+    """ get an interface object from its name/index """
+
+    if not ifname:
+        return None
 
     if not ifiter:
         ifiter = get_network_interfaces()
@@ -665,19 +668,78 @@ def get_interface(ifname: str|int, ifiter=None) -> NetworkInterface:
 
     return None
 
-def get_interface_index(iface: str|int,
+def get_interface_by_addr(ifname: str|bytes|bytearray,
+                          family: int=AF_UNSPEC, 
+                          ifiter=None) -> NetworkInterface:
+    """ get an interface object from one of its addresses/in_addrs """
+
+    if not ifname:
+        return None
+
+    if not ifiter:
+        ifiter = get_network_interfaces()
+
+    if isinstance(ifname, str):
+        addr = get_address(ifname, 0, family, type=SOCK_DGRAM)
+        if not addr:
+            return None
+        ifaddr = addr.in_addr
+    elif isinstance(ifname, bytes|bytearray):
+        ifaddr = ifname
+    else:
+        return None
+
+    addr = find_interface_address(ifaddr, ifiter=ifiter)
+    if addr:
+        return addr.interface
+
+    return None
+
+def get_interface(ifname: str|int|bytes,
+                  family: int=AF_UNSPEC,
+                  ifiter=None) -> NetworkInterface:
+    """ get the interface object for the interface name selected """
+
+    if not ifname:
+        return None
+
+    if not ifiter:
+        ifiter = get_network_interfaces()
+
+    ifc = get_interface_by_id(ifname, ifiter)
+    if not ifc:
+        ifc = get_interface_by_addr(ifname, family, ifiter)
+    
+    return ifc
+
+def get_interface_index(iface: str|int|bytes,
                         family=GIA_AF_UNSPEC,
                         ifiter=None) -> int:
     """ obtain the index of the interface 'iface'. If iface is an address,
         try to resolve to the interface in which the address is configured """
 
+    # default interface
     ifindex = 0
+
+    # iface is None, "" or 0
+    if not iface:
+        return ifindex
+
+    # INADDR_ANY/INADDR6_ANY
+    if iface == "0.0.0.0" or iface == "::":
+        return ifindex
+    if (iface == b'\x00\x00\x00\x00' or iface ==
+          b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'):
+        return ifindex
+
+    if not ifiter:
+        ifiter = get_network_interfaces()
 
     ifc = get_interface(iface, ifiter=ifiter)
     if ifc:
         ifindex = ifc.index
     else:
-        ifaddr = find_interface_address(iface, family)
+        ifaddr = find_interface_address(iface, family, ifiter=ifiter)
         if ifaddr:
             ifindex = ifaddr.interface.index
 
@@ -737,7 +799,7 @@ def get_interface_address(ifname: str|int,
 
     return addrlist[0]
 
-def find_interface_address(addr:   str,
+def find_interface_address(addr:   str|bytes|bytearray,
                            fam:    int=GIA_AF_UNSPEC,
                            ifname: str=None,
                            ifiter=None) -> Address:
@@ -746,28 +808,32 @@ def find_interface_address(addr:   str,
         Lookup can be restricted to an interface and/or a family
         important: address scope is encoded in the address itself """
 
-    address = get_address(addr, family=fam)
-    if not address:
+    if not ifiter:
+        ifiter = get_network_interfaces(ifname, fam)
+
+    if isinstance(addr, str):
+        address = get_address(addr, family=fam)
+        if not address:
+            return None
+        # if address is IPv6 and carries 'zone_id', verify interface is valid
+        if address.family == GIA_AF_INET6 and address.zone_id:
+            iface = get_interface_by_id(address.zone_id, ifiter=ifiter)
+            if not iface:
+                logger.error("Invalid zone_id in address '%s'", addr)
+                return None
+            if ifname and iface.name != ifname:
+                return None
+            ifname = iface.name
+        ifaddr  = address.in_addr
+    elif isinstance(addr, bytes|bytearray):
+        ifaddr = addr
+    else:
         return None
 
-    ifaces = ifiter
-    if not ifaces:
-        ifaces = get_network_interfaces(ifname, fam)
-
-    # if address is IPv6 and carries a 'zone_id', verify interface is valid
-    if address.family == GIA_AF_INET6 and address.zone_id:
-        iface = get_interface(address.zone_id, ifiter=ifaces)
-        if not iface:
-            logger.error("Invalid zone_id in address '%s'", addr)
-            return None
-        if ifname and iface.name != ifname:
-            return None
-        ifname = iface.name
-
-    for iface in ifaces:
-        for ifaddr in iface.addresses:
-            if ifaddr.in_addr == address.in_addr:
-                return ifaddr
+    for iface in ifiter:
+        for address in iface.addresses:
+            if ifaddr == address.in_addr:
+                return address 
 
     return None
 
@@ -812,6 +878,7 @@ __all__ = ["GIA_AF_UNSPEC", "GIA_AF_LINK", "GIA_AF_INET", "GIA_AF_INET6",
            "GIA_SCP_ALL", "GIA_SCP_HOST", "GIA_SCP_LINK", "GIA_SCP_GLOBAL",
            "get_network_interfaces",
            "get_interface", "get_interface_names",
+           "get_interface_by_id", "get_interface_by_addr",
            "find_interface_address",
            "get_interface_address", "get_interface_addresses",
            "print_interface_address", "print_interface_addresses"]

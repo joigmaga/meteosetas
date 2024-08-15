@@ -31,7 +31,7 @@
 
     overloaded methods:
 
-        res = bind(iface, service)
+        res = bind(ifaddr, service)
         res = connect(mgroup, service)       
         buffer, address, port = recvfrom()
         res = sendto(buffer, mgroup, service)
@@ -39,21 +39,23 @@
 
     other class methods:
 
-        res = join(mgroup, iface=None, source=None)
-        res = leave(mgroup, iface=None, source=None)
+        res = join(mgroup, ifaddr=None, source=None)
+        res = leave(mgroup, ifaddr=None, source=None)
         res = leaveall()
         res = set_recvoptions(reuseaddress=-1, reuseport=-1)
-        res = set_sendoptions(iface=None, loop=-1, ttl=-1, prec=-1):
+        res = set_sendoptions(fwdif=None, loop=-1, ttl=-1, prec=-1):
 
     meaning of arguments and return parameters:
 
         ifname:  (str) interface name
+        ifindex: (int) the interface index, a numeric identifier
         iface:   (NetworkInterface) an object containing information about
                  an interface and its addresses
-        ifindex: (int) the interface index, a numeric identifier
+        ifiter:  (iterable) an iterable returning each of the NetworkInterface
+                 objects. Typically returned by get_network_interfaces() 
         ifaddr:  (str) address of a system interface. An IPv4 or IPv6 address.
                  Addresses must be unique in a given scope (IPv6), so add
-                 scope zone when neccessary, e.g. "ff12:4567%eth0"
+                 scope zone when neccessary, e.g. "ff12::4567%eth0"
                  (str) IPv4 or IPv6 address.
                  The latter must be correctly scoped
                  (str) An interface name on the system
@@ -65,7 +67,7 @@
                  (int) a port number (a positive integer < 65536)
                  use port 0 to let the system select a local port for you
                  when binding, Examples: "echo", 7777
-        group:   a multicast group address
+        mgroup:  a multicast group address
                  (str) a valid multicast group address
                  Examples: "234.2.3.4", "ff12::3456%eth0"
                  Note: as a generalization, unicast UDP datagram delivery
@@ -78,12 +80,14 @@
         buffer:  the data to be sent or the data actually received, as a
                  bytes object
                  (bytes) the default buffer size for reads is 8192
+                 Note: as a datagram service, ordered and reliable delivery
+                 is by no means guaranteed. User code must provide for packet
+                 ordereding and retransmission when required 
                  Note: conversion from str to bytes is achieved specifying
-                 an encoding
-                 A usual encoding for text is Unicode 'utf-8'.
+                 an encoding. A usual encoding for text is Unicode 'utf-8'.
                  For byte-to-byte text encoding use "iso-8859-15" or similar.
-                 Example: "give me €".encode('utf-8'),
-                           b'give me \xe2\x82\xac'.decode() 
+                 Example: "give me €uros".encode('utf-8'),
+                           b'give me \xe2\x82\xacuros'.decode() 
         res:     the result of a method
                  (int) 0 means success, 1 means failure
 
@@ -109,13 +113,11 @@
         prec:    set the IP precedence bits in the IP header to indicate
                  Quality of Service (qos)
                  (int) a positive integer < 8
-
 """
 
 # system imports
 import sys
-from socket import (socket, inet_pton, htons,
-                getnameinfo, getservbyname, gaierror,
+from socket import (socket, getnameinfo, getservbyname, gaierror,
                 AF_UNSPEC, AF_INET, AF_INET6,
                 SOCK_DGRAM, IPPROTO_IP, IPPROTO_IPV6,
                 NI_NUMERICHOST, NI_NUMERICSERV,
@@ -140,7 +142,8 @@ from util.address import (SCP_INTLOCAL, SCP_LINKLOCAL, SCP_REALMLOCAL,
                           IPv4Address, IPv6Address, LinkLayerAddress,
                           get_address,)
 from util.getifaddrs import (get_interface, get_interface_address,
-                             get_interface_index,)
+                             get_interface_by_id, get_interface_index,
+                             find_interface_address,)
 
 #################
 # Constants
@@ -149,6 +152,7 @@ from util.getifaddrs import (get_interface, get_interface_address,
 # IP operation mode
 #
 IPM_IP   = 4
+IPM_IPV4 = 4
 IPM_IPV6 = 6
 IPM_BOTH = 46
 
@@ -243,9 +247,7 @@ class McastSocket(socket):
         else:
             logger.error("Invalid socket mode option: %d", ipmode)
             self.state = ST_CLOSED
-            # throw something here like 'raise ValueError("....")'
             raise ValueError("Invalid socket mode option")
-            #return
 
         # this is the actual socket creation
         #
@@ -256,7 +258,6 @@ class McastSocket(socket):
             self.setsockopt(IPPROTO_IPV6, IPV6_V6ONLY, 0)
             self.v6only = False
 
-        self.aux      = None
         self.sent     = 0
         self.received = 0
 
@@ -267,7 +268,7 @@ class McastSocket(socket):
 
     def _get_multicast_sockaddr(self, mgroup, service, mcastonly=False):
         """ obtain the sockaddr structure parameter for a multicast group
-            sockaddr format is Python's' address tuple (host, port) or
+            sockaddr in Python's address tuple format (host, port) or
             (host, port, flowinfo, scope_id) for the AF_INET6 family
             used in connect() and sendto() """
 
@@ -298,22 +299,28 @@ class McastSocket(socket):
 
         return maddr.sockaddr
 
-    def _get_interface_sockaddr(self, iface, service):
+    def _get_interface_sockaddr(self, ifaddr, service, family):
         """ obtain the sockaddr structure parameter for an interface address
             used in bind() """
 
-        ifaddr = iface
+        if not ifaddr:
+            if family == AF_INET:
+                paddr = "0.0.0.0"
+            elif family == AF_INET6:
+                paddr = "::"
+        else:
+            ifc = get_interface_by_id(ifaddr)
+            if ifc:
+                addr  = get_interface_address(ifc.name, family)
+                paddr = addr.printable
+            else:
+                # Must be a valid interface address
+                # will complain later otherwise
+                paddr = ifaddr
 
-        if get_interface_index(iface) > 0:
-            addr = get_interface_address(iface, self.family)
-            if not addr:
-                return 1
-            ifaddr = addr.original
-
-        # interface address family should match socket's
-        addrobj = get_address(ifaddr, service, self.family, SOCK_DGRAM)
+        addrobj = get_address(paddr, service, family, SOCK_DGRAM)
         if not addrobj:
-            logger.error("Interface sockaddr error. iface: %s, service: %s",
+            logger.error("Interface sockaddr error. address: %s, service: %s",
                           ifaddr, service)
             return None
 
@@ -339,7 +346,7 @@ class McastSocket(socket):
                 ss.ss_len = sizeof(struct_sockaddr_in)
             ss.ss_family = AF_INET
             sin = cast(pointer(ss), POINTER(struct_sockaddr_in)).contents
-            sin.sin_port    = htons(0)
+            sin.sin_port    = 0
             sin.sin_addr[:] = addrobj.in_addr
         
         elif addrobj.family == AF_INET6:
@@ -347,25 +354,26 @@ class McastSocket(socket):
                 ss.ss_len = sizeof(struct_sockaddr_in6)
             ss.ss_family = AF_INET6
             sin6 = cast(pointer(ss), POINTER(struct_sockaddr_in6)).contents
-            sin6.sin6_port     = htons(0)
+            sin6.sin6_port     = 0
             sin6.sin6_flowinfo = 0
             sin6.sin6_addr[:]  = addrobj.in_addr
-            sin6.sin6_scope_id = 0
+            sin6.sin6_scope_id = addrobj.scope_id
 
         return ss
 
-    def _get_optvalue(self, mgroup, iface, source):
+    def _get_optvalue(self, mgroup, ifaddr, source):
         """ build an structure group_req or group_source_req
             if source address is present """
 
         ifindex = 0
-        if iface:
-            ifindex = get_interface_index(iface)
+        if ifaddr:
+            ifindex = get_interface_index(ifaddr)
 
-        # iface = None, "" or 0 are an indication to the kernel
+        # ifaddr = None, "" or 0 are an indication to the kernel
         # to select a joining interface using routing information
-        if iface and (ifindex == 0):
-            logger.error("Invalid interface name or address: %s", iface)
+        # this seemingly works on Linux unlike on MacOS
+        if ifaddr and (ifindex == 0):
+            logger.error("Invalid interface name or address: %s", ifaddr)
             return None
 
         groupaddr = self._build_sockaddr(mgroup, check=CHK_MULTICAST)
@@ -389,7 +397,7 @@ class McastSocket(socket):
 
         return grp
 
-    def _join_leave(self, mgroup, iface, source, isjoin=True):
+    def _join_leave(self, mgroup, ifaddr, source, isjoin=True):
 
         tag = "join" if isjoin else "leave"
 
@@ -428,7 +436,7 @@ class McastSocket(socket):
             if source:
                 option = MCAST_LEAVE_SOURCE_GROUP
 
-        value = self._get_optvalue(mgroup, iface, source)
+        value = self._get_optvalue(mgroup, ifaddr, source)
         if not value:
             return 1
 
@@ -446,17 +454,17 @@ class McastSocket(socket):
 #############
 # public
 #
-    def bind(self, iface, service, reuseport=0):
+    def bind(self, ifaddr, service, reuseport=0):
         """ local interface to bind() """
 
         if self.state == ST_CLOSED:
             logger.error("cannot bind socket to address. Socket is closed")
             return 1
 
-        address = self._get_interface_sockaddr(iface, service)
+        address = self._get_interface_sockaddr(ifaddr, service, self.family)
 
         if not address:
-            logger.error("Invalid interface name, index or address: %s", iface)
+            logger.error("Invalid interface for bind(): %s", ifaddr)
             return 1
 
         # if binding to a non zero port set to reuse address and, optionally,
@@ -565,35 +573,35 @@ class McastSocket(socket):
 
         self.state = ST_CLOSED
 
-    def join(self, mgroup, iface=None, source=None):
-        """ join multicast group 'mgroup' at interface address 'iface'
+    def join(self, mgroup, ifaddr=None, source=None):
+        """ join multicast group 'mgroup' at interface address 'ifaddr'
             with optional SSM source 'source' """
 
-        if self._join_leave(mgroup, iface, source, isjoin=True) != 0:
+        if self._join_leave(mgroup, ifaddr, source, isjoin=True) != 0:
             return 1
 
         self.joined += 1
-        self.joined_groups.append((mgroup, iface, source))
+        self.joined_groups.append((mgroup, ifaddr, source))
 
         return 0
 
-    def leave(self, mgroup, iface=None, source=None):
-        """ Leave multicast group 'mgroup' at interface 'iface'
+    def leave(self, mgroup, ifaddr=None, source=None):
+        """ Leave multicast group 'mgroup' at interface 'ifaddr'
             with optional SSM source 'source' """
 
-        if self._join_leave(mgroup, iface, source, isjoin=False) != 0:
+        if self._join_leave(mgroup, ifaddr, source, isjoin=False) != 0:
             return 1
 
         self.joined -= 1
-        self.joined_groups.remove((mgroup, iface, source))
+        self.joined_groups.remove((mgroup, ifaddr, source))
 
         return 0
 
     def leaveall(self):
 
         res = 0
-        for mgroup, iface, source in self.joined_groups:
-            if self._join_leave(mgroup, iface, source, isjoin=False) != 0:
+        for mgroup, ifaddr, source in self.joined_groups:
+            if self._join_leave(mgroup, ifaddr, source, isjoin=False) != 0:
                 res = 1
 
         return res
@@ -619,12 +627,31 @@ class McastSocket(socket):
 
         return 0
 
-    def setfwdint(self, fwdint):
+    def setfwdint(self, fwdint:int):
+        """ set fordwarding interface for multicast packets
+            MacOS accepts in_addr, ip_mreq, ip_mreqn for IPv4; int for IPv6
+            Linux only accepts in_addr for IPV4; int for IPv6
+            MacOS blocks setting back to default forwarding intf for IPV6 """
 
+        # we use a single input type here: int representing interface index
+        #
         if self.family == AF_INET:
-            mreq = struct_ip_mreqn()
-            mreq.imr_ifindex = fwdint
-            self.setsockopt(IPPROTO_IP, IP_MULTICAST_IF, bytes(mreq))
+            if not fwdint:
+                # fwdint = None, 0
+                fwif = bytes(4)
+            else:
+                iface = get_interface_by_id(fwdint)
+                if not iface:
+                    logger.error("Invalid forwarding interface '%s'", fwdint)
+                    return
+                addr = get_interface_address(iface.name, AF_INET)
+                if not addr:
+                    logger.error(
+                       "Invalid address at forwarding interface '%s'",
+                        iface.name)
+                    return
+                fwif = addr.in_addr
+            self.setsockopt(IPPROTO_IP, IP_MULTICAST_IF, fwif)
 
         elif self.family == AF_INET6:
             self.setsockopt(IPPROTO_IPV6, IPV6_MULTICAST_IF, fwdint)
@@ -632,12 +659,12 @@ class McastSocket(socket):
     def getfwdint(self):
 
         if self.family == AF_INET:
-            bytesval = self.getsockopt(IPPROTO_IP, IP_MULTICAST_IF,
-                                       sizeof(struct_ip_mreqn)) 
-            buff = create_string_buffer(bytesval, len(bytesval))
-            mreq = cast(buff, POINTER(struct_ip_mreqn)).contents
+            bytesval = self.getsockopt(IPPROTO_IP, IP_MULTICAST_IF, 4)
+            addr = find_interface_address(bytesval, AF_INET)
+            if not addr:
+                return 0
 
-            return mreq.imr_ifindex
+            return addr.interface.index
 
         elif self.family == AF_INET6:
 
